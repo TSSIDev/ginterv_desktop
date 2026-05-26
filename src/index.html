@@ -1,5 +1,267 @@
 <!DOCTYPE html>
 <html lang="it">
-<head><meta charset="UTF-8"><title>Gestore Interventi</title></head>
-<body><h1>Gestore Interventi</h1></body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestore Interventi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ ONBOARDING -->
+<div id="onboarding">
+  <div class="wizard">
+    <div class="wiz-head">
+      <div class="app-brand">
+        <div class="brand-icon">GI</div>
+        <div class="brand-name">Gestore Interventi</div>
+      </div>
+      <div class="steps" id="wiz-steps"></div>
+    </div>
+    <div class="wiz-body" id="wiz-body"></div>
+    <div class="wiz-footer">
+      <button class="btn-skip" id="wiz-skip">Configura più tardi</button>
+      <div class="btn-row">
+        <button class="btn" id="wiz-back" style="display:none">← Indietro</button>
+        <button class="btn primary" id="wiz-next">Continua →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ MAIN APP -->
+<div id="main-app" class="app" style="display:none">
+
+  <!-- Titlebar -->
+  <div class="titlebar">
+    <div class="tb-icon">GI</div>
+    <div class="tb-title">Gestore Interventi</div>
+    <div class="tb-controls">
+      <button class="wc wc-min" title="Minimizza" onclick="App.winMin()"></button>
+      <button class="wc wc-max" title="Massimizza" onclick="App.winMax()"></button>
+      <button class="wc wc-close" title="Chiudi" onclick="App.winClose()"></button>
+    </div>
+  </div>
+
+  <!-- Menubar -->
+  <div class="menubar">
+    <button class="mi" onclick="App.navigate('calendar')">Calendario</button>
+    <button class="mi" onclick="App.navigate('interventions')">Interventi</button>
+    <button class="mi" onclick="App.navigate('search')">Ricerca</button>
+    <button class="mi" onclick="App.navigate('settings')">Impostazioni</button>
+    <div style="flex:1"></div>
+    <button class="mi" onclick="App.toggleTheme()" id="theme-btn">☾</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="tbtn accent" onclick="App.navigate('new')" id="toolbar-new">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nuovo intervento
+    </button>
+    <div class="tsep"></div>
+    <div class="global-search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Cerca interventi… (Ctrl+K)" id="global-search-input" oninput="App.onSearchInput(this.value)">
+      <span class="key">⌃K</span>
+    </div>
+    <div style="flex:1"></div>
+    <button class="tbtn" onclick="App.triggerSync()" id="sync-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Sync
+    </button>
+  </div>
+
+  <!-- Workspace -->
+  <div class="workspace" id="workspace">
+
+    <div class="sidebar">
+      <div class="sb-section">
+        <div class="sb-lbl">Account</div>
+        <div id="sidebar-accounts" style="font-size:12px;color:var(--text-2)">Caricamento…</div>
+      </div>
+    </div>
+
+    <div class="main-content">
+
+      <div class="view" id="view-calendar">
+        <div style="padding:20px;color:var(--text-3)">Calendario — in costruzione</div>
+      </div>
+
+      <div class="view" id="view-interventions">
+        <div id="list-toolbar" style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:var(--text-3)" id="list-count">Nessun intervento</span>
+        </div>
+        <div id="list-container" style="overflow-y:auto;flex:1;padding-top:6px"></div>
+      </div>
+
+      <div class="view" id="view-new">
+        <div style="padding:20px 24px;overflow-y:auto;flex:1">
+          <div style="font-size:16px;font-weight:800;margin-bottom:18px;letter-spacing:-.01em" id="form-title">Nuovo intervento</div>
+          <form id="intervention-form" onsubmit="return false">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="fg">
+                <label class="fg-lbl">Data e ora inizio *</label>
+                <input class="fg-in" type="datetime-local" id="f-start" required>
+              </div>
+              <div class="fg">
+                <label class="fg-lbl">Durata</label>
+                <div class="slider-wrap">
+                  <input type="range" id="f-durata" min="15" max="480" step="15" value="60" oninput="App.updateDurata(this.value)">
+                  <span class="slider-val" id="f-durata-val">1h</span>
+                </div>
+                <div class="slider-labels"><span>15 min</span><span>8h</span></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="fg">
+                <label class="fg-lbl">Tecnico (sigla) *</label>
+                <div class="fuzzy-wrap" id="fuzzy-sigla-wrap"></div>
+              </div>
+              <div class="fg">
+                <label class="fg-lbl">Cliente *</label>
+                <div class="fuzzy-wrap" id="fuzzy-cliente-wrap"></div>
+              </div>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Tipo intervento</label>
+              <div class="fuzzy-wrap" id="fuzzy-tipo-wrap"></div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div class="fg">
+                <label class="fg-lbl">Tariffa</label>
+                <div class="fuzzy-wrap" id="fuzzy-tariffa-wrap"></div>
+              </div>
+              <div class="fg">
+                <label class="fg-lbl">Addebito</label>
+                <div class="fuzzy-wrap" id="fuzzy-addebito-wrap"></div>
+              </div>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Trasferta</label>
+              <select class="fg-sel" id="f-trasferta">
+                <option value="">—</option>
+                <option>No</option>
+                <option>Sì</option>
+                <option>Rimborso km</option>
+              </select>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Note soggetto (Altro)</label>
+              <input class="fg-in" type="text" id="f-altro" placeholder="Testo aggiuntivo nel soggetto…" oninput="App.updateSubjectPreview()">
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Note tecniche</label>
+              <textarea class="fg-ta" id="f-note" rows="4" placeholder="Note interne, dettagli tecnici…"></textarea>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Anteprima soggetto Exchange</label>
+              <div id="subject-preview">—</div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn primary" id="form-submit-btn" type="button" onclick="App.submitForm()">
+                <span id="form-submit-text">Salva intervento</span>
+                <span class="spinner" id="form-submit-spinner" style="display:none"></span>
+              </button>
+              <button class="btn" id="form-sign-btn" type="button" onclick="App.submitAndSign()" style="display:none">Firma e salva</button>
+              <button class="btn" id="form-cancel-btn" type="button" onclick="App.cancelForm()">Annulla</button>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+      <div class="view" id="view-search">
+        <div style="padding:20px;color:var(--text-3)">Ricerca — in costruzione</div>
+      </div>
+
+      <div class="view" id="view-settings">
+        <div style="padding:20px;color:var(--text-3)">Impostazioni — in costruzione</div>
+      </div>
+
+    </div>
+
+    <div class="detail-panel" id="detail-panel">
+      <div id="detail-content" style="padding:16px;color:var(--text-3);font-size:12px">
+        Seleziona un intervento per i dettagli.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Statusbar -->
+  <div class="statusbar">
+    <div class="sb-item">
+      <div class="sb-dot a" id="sb-dot"></div>
+      <span id="sb-sync-text">Pronto</span>
+    </div>
+    <div class="sb-sp"></div>
+    <div class="sb-item" id="sb-account">—</div>
+  </div>
+
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay hidden" id="modal-firma">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Firma digitale</span>
+      <button class="modal-close" onclick="App.closeModal('firma')">×</button>
+    </div>
+    <div class="modal-body">
+      <canvas id="firma-canvas" width="440" height="200" style="width:100%;border:1px solid var(--border-2);border-radius:8px;touch-action:none;cursor:crosshair;background:var(--bg-elev)"></canvas>
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn sm" onclick="App.firmaClear()">Pulisci</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="App.closeModal('firma')">Annulla</button>
+      <button class="btn primary" onclick="App.firmaConfirm()">Salva firma</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-email">
+  <div class="modal" style="width:560px">
+    <div class="modal-head">
+      <span class="modal-title">Invia report via email</span>
+      <button class="modal-close" onclick="App.closeModal('email')">×</button>
+    </div>
+    <div class="modal-body" id="modal-email-body"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="App.closeModal('email')">Annulla</button>
+      <button class="btn primary" onclick="App.emailSend()">
+        <span id="email-send-text">Invia</span>
+        <span class="spinner" id="email-send-spinner" style="display:none"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-pdf">
+  <div class="modal" style="width:460px">
+    <div class="modal-head">
+      <span class="modal-title">Esporta PDF</span>
+      <button class="modal-close" onclick="App.closeModal('pdf')">×</button>
+    </div>
+    <div class="modal-body" id="modal-pdf-body"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="App.closeModal('pdf')">Annulla</button>
+      <button class="btn primary" onclick="App.pdfExport()">Esporta PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="app.js"></script>
+</body>
 </html>
