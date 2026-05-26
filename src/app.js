@@ -528,8 +528,32 @@ const App = {
   },
 
   async submitAndSign() {
-    await this.submitForm();
-    if (this.editingItem) this.openFirmaModal(this.editingItem);
+    const btn = document.getElementById('form-submit-btn');
+    const spinner = document.getElementById('form-submit-spinner');
+    btn.disabled = true; spinner.style.display = '';
+    try {
+      const data = this._getFormData();
+      if (!data.email) { toast('Nessun account configurato', 'error'); return; }
+      if (!document.getElementById('f-start').value) { toast('Data obbligatoria', 'error'); return; }
+      let savedItem;
+      if (this.editingItem) {
+        savedItem = await invoke('update_intervention', {
+          input: { email: data.email, itemId: this.editingItem.exchange_item_id, changeKey: this.editingItem.change_key, data }
+        });
+        toast('Intervento aggiornato', 'success');
+      } else {
+        savedItem = await invoke('create_intervention', { data });
+        toast('Intervento creato', 'success');
+      }
+      this.editingItem = null;
+      await this.loadInterventions();
+      this.navigate('interventions');
+      if (savedItem) this.openFirmaModal(savedItem);
+    } catch(e) {
+      toast('Errore: ' + e, 'error');
+    } finally {
+      btn.disabled = false; spinner.style.display = 'none';
+    }
   },
 
   // ── Interventions list ────────────────────────────────────────────
