@@ -1,4 +1,5 @@
 pub mod db;
+pub mod exchange;
 pub mod keychain;
 
 use db::DbConn;
