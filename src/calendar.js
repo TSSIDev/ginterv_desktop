@@ -457,7 +457,7 @@ const Calendar = (() => {
           ${items.map(iv => {
             const endMin = iv.sh * 60 + iv.sm + iv.dur;
             return `<div class="day-list-item" style="color:${iv.color};border-color:${iv.color}"
-              onclick="Calendar._select(${JSON.stringify(JSON.stringify(iv._raw))})">
+              onclick="App.showDetail(${JSON.stringify(JSON.stringify(iv._raw))})">
               <div class="dli-time">${hm(iv.sh, iv.sm)} – ${hm(Math.floor(endMin/60), endMin%60)} · ${iv.sigla}</div>
               <div class="dli-client">${iv.client}</div>
               <div class="dli-tipo">${iv.tipo || '—'}</div>
@@ -570,13 +570,18 @@ const Calendar = (() => {
 
     _monthDayClick(ts) {
       const d = new Date(ts); d.setHours(0,0,0,0);
-      renderMonthDayDetail(d);
+      const dayItems = getFilteredItems().filter(i => sameD(i.startD, d));
+      if (dayItems.length === 1) {
+        App.showDetail(dayItems[0]._raw);
+      } else {
+        renderMonthDayDetail(d);
+      }
     },
 
     _select(itemJson) {
       const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
       selectedItem = item;
-      renderDetail(item);
+      App.showDetail(item);
       // Re-render to update selected state
       if (currentView === 'week') renderWeek();
       else if (currentView === 'day') renderDay();
@@ -584,7 +589,7 @@ const Calendar = (() => {
 
     _deselect() {
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       if (currentView === 'week') renderWeek();
       else if (currentView === 'day') renderDay();
     },

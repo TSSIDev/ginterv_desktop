@@ -582,29 +582,94 @@ const App = {
     }).join('');
   },
 
-  showDetail(itemJson) {
+  showDetail(itemJson, hasSig) {
     const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     this._currentItemId = { id: item.exchange_item_id, ck: item.change_key };
-    const el = document.getElementById('detail-content');
-    el.innerHTML = `
-      <div style="margin-bottom:14px">
-        <div style="font-size:14px;font-weight:800;margin-bottom:4px">${item.ragione_sociale || '—'}</div>
-        <div style="font-size:11px;color:var(--text-3)">${fmtDT(item.start_dt)} · ${item.durata || ''}</div>
+    const empty = document.getElementById('detail-empty');
+    const fill = document.getElementById('detail-fill');
+    if (empty) empty.style.display = 'none';
+    if (!fill) return;
+    fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
+
+    const colors = ['#6da8ee','#72d895','#f0bd71','#a99af4','#e99b8b','#6ed7d1','#ef7d82','#f8c76a'];
+    const colorOf = s => { let h = 0; for (const c of (s||'')) h = (h*31+c.charCodeAt(0))&0xffff; return colors[h%colors.length]; };
+    const color = colorOf(item.nome_tecnico);
+
+    const start = item.start_dt ? new Date(item.start_dt) : null;
+    const end = item.end_dt ? new Date(item.end_dt) : null;
+    const dur = end && start ? Math.round((end - start) / 60000) : 0;
+    const pad = n => String(n).padStart(2,'0');
+    const hm = (d) => d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '—';
+    const minHM = m => { const h=Math.floor(m/60),mm=m%60; return h&&mm?`${h}h ${mm}m`:h?`${h}h`:`${mm}m`; };
+    const DOW = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+    const MON = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+    const dateStr = start ? `${DOW[start.getDay()]} ${start.getDate()} ${MON[start.getMonth()]} ${start.getFullYear()}` : '—';
+    const iS = JSON.stringify(JSON.stringify(item));
+
+    const sigHtml = hasSig
+      ? `<div class="sig-dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></div>
+         <div class="sig-txt">Firmato dal cliente</div>
+         <button class="sig-act" onclick="App.openFirmaModal(${iS})">Visualizza</button>`
+      : `<div class="sig-dot" style="background:var(--text-3)"></div>
+         <div class="sig-txt">Firma cliente assente</div>
+         <button class="sig-act" onclick="App.openFirmaModal(${iS})">Firma ora</button>`;
+
+    fill.innerHTML = `
+      <div class="detail-head">
+        <div class="dh-eye">Intervento</div>
+        <div class="dh-client">${item.ragione_sociale || '—'}</div>
+        <div class="badge-row">
+          ${item.descrizione ? `<span class="badge b-gray">${item.descrizione}</span>` : ''}
+          ${item.tipo_tariffa ? `<span class="badge b-purple">${item.tipo_tariffa}</span>` : ''}
+          ${dur ? `<span class="badge b-gray">${minHM(dur)}</span>` : ''}
+        </div>
       </div>
-      <div style="display:grid;gap:8px;margin-bottom:14px">
-        ${item.nome_tecnico ? `<div style="display:flex;gap:8px"><span style="font-size:10px;color:var(--text-3);width:80px;flex-shrink:0">Tecnico</span><span style="font-size:12px;font-weight:600">${item.nome_tecnico}</span></div>` : ''}
-        ${item.descrizione ? `<div style="display:flex;gap:8px"><span style="font-size:10px;color:var(--text-3);width:80px;flex-shrink:0">Tipo</span><span style="font-size:12px">${item.descrizione}</span></div>` : ''}
-        ${item.tipo_tariffa ? `<div style="display:flex;gap:8px"><span style="font-size:10px;color:var(--text-3);width:80px;flex-shrink:0">Tariffa</span><span style="font-size:12px">${item.tipo_tariffa} ${item.tipo_fatturazione||''}</span></div>` : ''}
-        ${item.trasferta ? `<div style="display:flex;gap:8px"><span style="font-size:10px;color:var(--text-3);width:80px;flex-shrink:0">Trasferta</span><span style="font-size:12px">${item.trasferta}</span></div>` : ''}
+      <div class="detail-body fade-up">
+        ${item.nome_tecnico ? `<div class="df">
+          <div class="df-lbl">Tecnico</div>
+          <div class="df-val"><div class="tech-pill"><div class="pill-av" style="background:${color};color:#111">${item.nome_tecnico}</div>${item.nome_tecnico}</div></div>
+        </div>` : ''}
+        <div class="df"><div class="df-lbl">Data</div><div class="df-val">${dateStr}</div></div>
+        ${dur ? `<div class="df"><div class="df-lbl">Orario</div><div class="df-val mono">${hm(start)} → ${hm(end)} (${minHM(dur)})</div></div>` : ''}
+        ${item.tipo_fatturazione ? `<div class="df"><div class="df-lbl">Addebito</div><div class="df-val">${item.tipo_fatturazione}</div></div>` : ''}
+        ${item.trasferta ? `<div class="df"><div class="df-lbl">Trasferta</div><div class="df-val">${item.trasferta}</div></div>` : ''}
+        ${item.body_html ? `<div class="df"><div class="df-lbl">Note</div><div class="note-box">${item.body_html}</div></div>` : ''}
       </div>
-      ${item.body_html ? `<div style="font-size:12px;color:var(--text-2);border-top:1px solid var(--border);padding-top:10px;margin-bottom:14px">${item.body_html}</div>` : ''}
-      <div style="display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);padding-top:12px">
-        <button class="btn sm" onclick="App.editItem(${JSON.stringify(JSON.stringify(item))})">Modifica</button>
-        <button class="btn sm" onclick="App.openPdfModal(${JSON.stringify(JSON.stringify(item))})">PDF</button>
-        <button class="btn sm" onclick="App.openEmailModal(${JSON.stringify(JSON.stringify(item))})">Email</button>
-        <button class="btn sm" onclick="App.openFirmaModal(${JSON.stringify(JSON.stringify(item))})">Firma</button>
-        <button class="btn sm danger" onclick="App.confirmDelete(${JSON.stringify(JSON.stringify(item))})">Elimina</button>
+      <div class="detail-ftr">
+        <div class="sig-bar" id="detail-sig-bar">${sigHtml}</div>
+        <div class="act-row">
+          <button class="abtn prime" onclick="App.editItem(${iS})">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Modifica
+          </button>
+          <button class="abtn" onclick="App.openPdfModal(${iS})">PDF</button>
+          <button class="abtn" onclick="App.openEmailModal(${iS})">Email</button>
+        </div>
+        <div class="act-row">
+          <button class="abtn danger" onclick="App.confirmDelete(${iS})">Elimina</button>
+        </div>
       </div>`;
+
+    // Async signature check if not already known
+    if (hasSig === undefined && item.exchange_item_id) {
+      invoke('get_signature', { exchangeItemId: item.exchange_item_id }).then(sig => {
+        const bar = document.getElementById('detail-sig-bar');
+        if (!bar) return;
+        if (sig) {
+          bar.innerHTML = `<div class="sig-dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></div>
+            <div class="sig-txt">Firmato dal cliente</div>
+            <button class="sig-act" onclick="App.openFirmaModal(${iS})">Visualizza</button>`;
+        }
+      }).catch(() => {});
+    }
+  },
+
+  clearDetail() {
+    const empty = document.getElementById('detail-empty');
+    const fill = document.getElementById('detail-fill');
+    if (empty) empty.style.display = 'flex';
+    if (fill) { fill.style.display = 'none'; fill.innerHTML = ''; }
+    this._currentItemId = null;
   },
 
   editItem(itemJson) {
@@ -620,7 +685,7 @@ const App = {
     try {
       await invoke('delete_intervention', { email: primary.email, itemId: item.exchange_item_id, changeKey: item.change_key });
       toast('Intervento eliminato', 'success');
-      document.getElementById('detail-content').innerHTML = '<div style="padding:16px;color:var(--text-3);font-size:12px">Seleziona un intervento.</div>';
+      this.clearDetail();
       await this.loadInterventions();
     } catch(e) { toast('Errore eliminazione: ' + e, 'error'); }
   },
