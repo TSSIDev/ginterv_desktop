@@ -17,13 +17,7 @@ impl EwsClient {
             _ => email.to_string(),
         };
 
-        let http = reqwest::blocking::Client::builder()
-            .danger_accept_invalid_certs(true) // some Exchange installs have self-signed certs
-            .timeout(std::time::Duration::from_secs(30))
-            .build()?;
-
-        // Store credentials for use in call()
-        // We'll pass them via the Authorization header for Basic auth
+        // We'll pass credentials via the Authorization header for Basic auth
         let credentials = format!("{}:{}", user, password);
         let encoded = base64::Engine::encode(
             &base64::engine::general_purpose::STANDARD,

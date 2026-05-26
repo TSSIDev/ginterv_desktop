@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod db;
 pub mod exchange;
 pub mod keychain;
@@ -27,6 +28,29 @@ pub fn run() {
             }
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            // auth
+            commands::auth::test_connection,
+            commands::auth::save_account,
+            commands::auth::list_accounts_cmd,
+            commands::auth::delete_account_cmd,
+            // interventions
+            commands::interventions::list_interventions,
+            commands::interventions::get_intervention,
+            commands::interventions::create_intervention,
+            commands::interventions::update_intervention,
+            commands::interventions::delete_intervention,
+            commands::interventions::save_signature,
+            commands::interventions::get_signature,
+            commands::interventions::get_client_email,
+            commands::interventions::set_client_email,
+            // config
+            commands::config::get_dropdown_data,
+            commands::config::set_dropdown_list,
+            commands::config::get_config_value,
+            commands::config::set_config_value,
+            commands::config::clear_cache,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

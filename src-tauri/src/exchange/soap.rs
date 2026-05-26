@@ -1,5 +1,3 @@
-const PS_PUBLIC_STRINGS: &str = "00020329-0000-0000-C000-000000000046";
-
 /// All 8 extended property names used by the IC050815 Outlook form.
 const EXT_PROPS: &[(&str, &str)] = &[
     ("Nome tecnico:", "nome_tecnico"),
