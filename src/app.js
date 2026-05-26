@@ -370,8 +370,9 @@ const App = {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const target = document.getElementById(`view-${view}`);
     if (target) target.classList.add('active');
-    // Update toolbar-new visibility
     document.getElementById('toolbar-new').style.display = view === 'new' ? 'none' : '';
+    if (view === 'calendar') Calendar.onNavigate();
+    else this.renderSidebarAccounts();
   },
 
   toggleTheme() {

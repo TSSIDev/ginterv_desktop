@@ -85,7 +85,37 @@
     <div class="main-content">
 
       <div class="view" id="view-calendar">
-        <div style="padding:20px;color:var(--text-3)">Calendario — in costruzione</div>
+        <!-- Calendar sub-toolbar -->
+        <div class="cal-sub-toolbar">
+          <button class="navbtn" onclick="Calendar.nav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <div class="range-lbl" id="cal-range-lbl">—</div>
+          <button class="navbtn" onclick="Calendar.nav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+          <button class="tbtn" onclick="Calendar.goToday()">Oggi</button>
+          <div class="view-sw" style="margin-left:auto">
+            <button class="vsbtn on" onclick="Calendar.setView('week',this)">Sett.</button>
+            <button class="vsbtn" onclick="Calendar.setView('day',this)">Giorno</button>
+            <button class="vsbtn" onclick="Calendar.setView('month',this)">Mese</button>
+          </div>
+        </div>
+        <!-- Week view -->
+        <div id="cal-week-view" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+          <div class="wk-head" id="cal-wk-head"></div>
+          <div class="tgrid-wrap" id="cal-tgrid-wrap">
+            <div class="tgrid-inner" id="cal-tgrid-inner"></div>
+          </div>
+        </div>
+        <!-- Day view -->
+        <div id="cal-day-view" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+          <div class="day-head" id="cal-day-head"></div>
+          <div class="tgrid-wrap" id="cal-day-wrap">
+            <div class="tgrid-inner" id="cal-day-inner"></div>
+          </div>
+        </div>
+        <!-- Month view -->
+        <div id="cal-month-view" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+          <div class="mth-head" id="cal-mth-head"></div>
+          <div class="mth-grid" id="cal-mth-grid"></div>
+        </div>
       </div>
 
       <div class="view" id="view-interventions">
@@ -190,10 +220,12 @@
 
     </div>
 
-    <div class="detail-panel" id="detail-panel">
-      <div id="detail-content" style="padding:16px;color:var(--text-3);font-size:12px">
-        Seleziona un intervento per i dettagli.
+    <div class="detail-panel" id="detail-panel" style="display:flex;flex-direction:column;overflow:hidden">
+      <div class="empty-detail" id="detail-empty">
+        <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+        <div class="empty-txt">Seleziona un intervento<br>per vedere i dettagli</div>
       </div>
+      <div id="detail-fill" style="display:none;flex:1;overflow:hidden;flex-direction:column"></div>
     </div>
 
   </div>
@@ -262,6 +294,7 @@
 </div>
 
 <div id="toast-container"></div>
+<script src="calendar.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
