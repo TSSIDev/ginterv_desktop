@@ -16,6 +16,12 @@ const listenEvent = (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__
   ? (ev, cb) => window.__TAURI__.event.listen(ev, cb)
   : () => {};
 
+// ── HTML escape ─────────────────────────────────────────────────────
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Toast ────────────────────────────────────────────────────────────
 function toast(msg, type = 'info', duration = 3000) {
   const c = document.getElementById('toast-container');
