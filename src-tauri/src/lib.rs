@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod exchange;
 pub mod keychain;
+pub mod pdf;
 pub mod sync;
 
 use db::DbConn;
@@ -63,6 +64,9 @@ pub fn run() {
             commands::interventions::set_client_email,
             // email
             commands::email::send_email,
+            // pdf
+            commands::pdf::export_pdf,
+            commands::pdf::export_pdf_bulk,
             // config
             commands::config::get_dropdown_data,
             commands::config::set_dropdown_list,

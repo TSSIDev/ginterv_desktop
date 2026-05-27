@@ -25,7 +25,8 @@ reqwest      = { version = "0.12", features = ["blocking"] }
 quick-xml    = { version = "0.36", features = ["serialize"] }
 rusqlite     = { version = "0.31", features = ["bundled"] }
 keyring      = { version = "2" }
-printpdf     = "0.7"
+printpdf     = { version = "0.7", features = ["embedded_images"] }
+image        = { version = "0.24", default-features = false, features = ["png"] }
 lettre       = { version = "0.11", features = ["smtp-transport", "native-tls"] }
 chrono       = { version = "0.4", features = ["serde"] }
 base64       = "0.22"

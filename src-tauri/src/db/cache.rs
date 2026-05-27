@@ -111,6 +111,55 @@ pub fn get_range(
     rows.collect()
 }
 
+pub fn get_by_item_id(
+    conn: &Connection,
+    user_email: &str,
+    exchange_item_id: &str,
+) -> Result<Option<CachedItem>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, user_email, exchange_item_id, change_key, start_dt, end_dt,
+                subject, nome_tecnico, ragione_sociale, descrizione, altro,
+                tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
+                schema_version, synced_at
+         FROM intervention_cache
+         WHERE user_email = ?1 AND exchange_item_id = ?2",
+    )?;
+    let mut rows = stmt.query_map(params![user_email, exchange_item_id], |r| {
+        Ok(CachedItem {
+            id: r.get(0)?,
+            user_email: r.get(1)?,
+            exchange_item_id: r.get(2)?,
+            change_key: r.get(3)?,
+            start_dt: r.get(4)?,
+            end_dt: r.get(5)?,
+            subject: r.get(6)?,
+            nome_tecnico: r.get(7)?,
+            ragione_sociale: r.get(8)?,
+            descrizione: r.get(9)?,
+            altro: r.get(10)?,
+            tipo_tariffa: r.get(11)?,
+            tipo_fatturazione: r.get(12)?,
+            trasferta: r.get(13)?,
+            durata: r.get(14)?,
+            body_html: r.get(15)?,
+            schema_version: r.get(16)?,
+            synced_at: r.get(17)?,
+        })
+    })?;
+    rows.next().transpose()
+}
+
+pub fn get_signature_b64(conn: &Connection, exchange_item_id: &str) -> Result<Option<String>> {
+    let mut stmt =
+        conn.prepare("SELECT png_base64 FROM signatures WHERE exchange_item_id = ?1")?;
+    let mut rows = stmt.query(params![exchange_item_id])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
 pub fn delete_item(conn: &Connection, user_email: &str, exchange_item_id: &str) -> Result<()> {
     conn.execute(
         "DELETE FROM intervention_cache WHERE user_email = ?1 AND exchange_item_id = ?2",
