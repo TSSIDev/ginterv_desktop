@@ -61,6 +61,8 @@ pub fn run() {
             commands::interventions::get_signature,
             commands::interventions::get_client_email,
             commands::interventions::set_client_email,
+            // email
+            commands::email::send_email,
             // config
             commands::config::get_dropdown_data,
             commands::config::set_dropdown_list,
