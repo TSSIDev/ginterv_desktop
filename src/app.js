@@ -304,6 +304,8 @@ const App = {
   _firmaDrawing: false,
   _firmaLastX: 0,
   _firmaLastY: 0,
+  _firmaPenWidth: 2,
+  _firmaHasDraw: false,
 
   async init() {
     // Apply saved theme
@@ -372,6 +374,7 @@ const App = {
     if (target) target.classList.add('active');
     document.getElementById('toolbar-new').style.display = view === 'new' ? 'none' : '';
     if (view === 'calendar') Calendar.onNavigate();
+    else if (view === 'search') Search.onNavigate();
     else this.renderSidebarAccounts();
   },
 
@@ -732,6 +735,7 @@ const App = {
 
   onSearchInput(val) {
     if (val.trim().length > 0) this.navigate('search');
+    Search.query(val);
   },
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -741,52 +745,105 @@ const App = {
 
   // ── Firma modal ───────────────────────────────────────────────────
   openFirmaModal(itemJson) {
-    this._currentFirmaItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    document.getElementById('modal-firma').classList.remove('hidden');
-    const canvas = document.getElementById('firma-canvas');
-    this._firmaCtx = canvas.getContext('2d');
-    this._firmaCtx.clearRect(0, 0, canvas.width, canvas.height);
-    this._firmaCtx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--text-1').trim() || '#dfe7f2';
-    this._firmaCtx.lineWidth = 2;
-    this._firmaCtx.lineCap = 'round';
-    this._firmaCtx.lineJoin = 'round';
-    this._firmaDrawing = false;
+    const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
+    this._currentFirmaItem = item;
+    this._firmaPenWidth = 2;
+    this._firmaHasDraw = false;
 
-    const getPos = (e) => {
-      const r = canvas.getBoundingClientRect();
-      const src = e.touches ? e.touches[0] : e;
-      return [(src.clientX - r.left) * (canvas.width / r.width), (src.clientY - r.top) * (canvas.height / r.height)];
-    };
-    canvas.onmousedown = canvas.ontouchstart = (e) => {
-      e.preventDefault(); this._firmaDrawing = true;
-      [this._firmaLastX, this._firmaLastY] = getPos(e);
-    };
-    canvas.onmousemove = canvas.ontouchmove = (e) => {
-      if (!this._firmaDrawing) return;
-      e.preventDefault();
-      const [x, y] = getPos(e);
-      this._firmaCtx.beginPath();
-      this._firmaCtx.moveTo(this._firmaLastX, this._firmaLastY);
-      this._firmaCtx.lineTo(x, y);
-      this._firmaCtx.stroke();
-      [this._firmaLastX, this._firmaLastY] = [x, y];
-    };
-    canvas.onmouseup = canvas.ontouchend = () => { this._firmaDrawing = false; };
+    // Populate info bar
+    const clientEl = document.getElementById('sig-info-client');
+    const metaEl = document.getElementById('sig-info-meta');
+    if (clientEl) clientEl.textContent = item.ragione_sociale || '—';
+    if (metaEl) {
+      const dt = item.start_dt ? fmtDT(item.start_dt) : '—';
+      const parts = [dt, item.nome_tecnico, item.descrizione_intervento].filter(Boolean);
+      metaEl.textContent = parts.join(' · ');
+    }
+    const legal = document.getElementById('sig-legal');
+    if (legal) legal.textContent = `Il cliente conferma il lavoro svolto con ${item.ragione_sociale || 'il cliente'}. Dopo la conferma, firma e timestamp vengono collegati al rapporto.`;
+
+    // Reset checklist
+    const chk = document.getElementById('sig-check-firma');
+    if (chk) { chk.textContent = 'in attesa'; chk.style.color = 'var(--amber)'; }
+
+    // Reset pen size buttons
+    document.querySelectorAll('.sig-pen-size').forEach((b, i) => b.classList.toggle('on', i === 0));
+
+    document.getElementById('modal-firma').classList.remove('hidden');
+
+    // Init canvas after modal is visible
+    requestAnimationFrame(() => {
+      const wrap = document.getElementById('sig-canvas-wrap');
+      const canvas = document.getElementById('firma-canvas');
+      if (!wrap || !canvas) return;
+      canvas.width = wrap.offsetWidth;
+      canvas.height = wrap.offsetHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = this._firmaPenWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      this._firmaCtx = ctx;
+      this._firmaDrawing = false;
+
+      const ph = document.getElementById('sig-canvas-placeholder');
+      if (ph) ph.style.display = '';
+
+      const getPos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const src = e.touches ? e.touches[0] : e;
+        return [(src.clientX - r.left) * (canvas.width / r.width), (src.clientY - r.top) * (canvas.height / r.height)];
+      };
+      canvas.onmousedown = canvas.ontouchstart = (e) => {
+        e.preventDefault();
+        this._firmaDrawing = true;
+        [this._firmaLastX, this._firmaLastY] = getPos(e);
+      };
+      canvas.onmousemove = canvas.ontouchmove = (e) => {
+        if (!this._firmaDrawing) return;
+        e.preventDefault();
+        const [x, y] = getPos(e);
+        ctx.beginPath(); ctx.moveTo(this._firmaLastX, this._firmaLastY);
+        ctx.lineTo(x, y); ctx.stroke();
+        [this._firmaLastX, this._firmaLastY] = [x, y];
+        if (!this._firmaHasDraw) {
+          this._firmaHasDraw = true;
+          if (ph) ph.style.display = 'none';
+          const ck = document.getElementById('sig-check-firma');
+          if (ck) { ck.textContent = 'OK'; ck.style.color = 'var(--green)'; }
+        }
+      };
+      canvas.onmouseup = canvas.ontouchend = canvas.onmouseleave = () => { this._firmaDrawing = false; };
+    });
   },
 
   firmaClear() {
     const canvas = document.getElementById('firma-canvas');
     if (this._firmaCtx) this._firmaCtx.clearRect(0, 0, canvas.width, canvas.height);
+    this._firmaHasDraw = false;
+    const ph = document.getElementById('sig-canvas-placeholder');
+    if (ph) ph.style.display = '';
+    const chk = document.getElementById('sig-check-firma');
+    if (chk) { chk.textContent = 'in attesa'; chk.style.color = 'var(--amber)'; }
+  },
+
+  firmaPenSize(btn, size) {
+    this._firmaPenWidth = size;
+    if (this._firmaCtx) this._firmaCtx.lineWidth = size;
+    document.querySelectorAll('.sig-pen-size').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
   },
 
   async firmaConfirm() {
+    if (!this._firmaHasDraw) { toast('Aggiungi la firma prima di confermare', 'warning'); return; }
     const canvas = document.getElementById('firma-canvas');
-    const dataUrl = canvas.toDataURL('image/png');
-    const base64 = dataUrl.replace('data:image/png;base64,', '');
+    const base64 = canvas.toDataURL('image/png').replace('data:image/png;base64,', '');
     try {
       await invoke('save_signature', { exchangeItemId: this._currentFirmaItem.exchange_item_id, pngBase64: base64 });
       toast('Firma salvata', 'success');
       this.closeModal('firma');
+      this.showDetail(this._currentFirmaItem, true);
     } catch(e) { toast('Errore firma: ' + e, 'error'); }
   },
 

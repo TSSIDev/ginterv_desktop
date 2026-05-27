@@ -210,8 +210,46 @@
         </div>
       </div>
 
-      <div class="view" id="view-search">
-        <div style="padding:20px;color:var(--text-3)">Ricerca — in costruzione</div>
+      <div class="view" id="view-search" style="flex-direction:row">
+
+        <!-- Filter sidebar -->
+        <div id="srch-sidebar">
+
+          <div class="srch-section">
+            <div class="srch-sec-lbl">Cerca cliente</div>
+            <input class="fg-in" id="srch-client-input" placeholder="Nome cliente…"
+              oninput="Search.setClientQ(this.value)" style="margin-top:4px;font-size:12px">
+          </div>
+
+          <div class="srch-section">
+            <div class="srch-sec-lbl">Periodo</div>
+            <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">
+              <button class="srch-pill srch-date-pill" data-preset="oggi"      onclick="Search.setDatePreset('oggi')">Oggi</button>
+              <button class="srch-pill srch-date-pill" data-preset="settimana" onclick="Search.setDatePreset('settimana')">Questa settimana</button>
+              <button class="srch-pill srch-date-pill" data-preset="mese"      onclick="Search.setDatePreset('mese')">Questo mese</button>
+              <button class="srch-pill srch-date-pill" data-preset="3mesi"     onclick="Search.setDatePreset('3mesi')">Ultimi 3 mesi</button>
+            </div>
+          </div>
+
+          <div class="srch-section">
+            <div class="srch-sec-lbl">Tecnico</div>
+            <div id="srch-tech-pills" style="display:flex;flex-direction:column;gap:3px;margin-top:4px"></div>
+          </div>
+
+          <div class="srch-section">
+            <div class="srch-sec-lbl">Tipo intervento</div>
+            <div id="srch-tipo-pills" style="display:flex;flex-direction:column;gap:3px;margin-top:4px"></div>
+          </div>
+
+          <button class="btn" onclick="Search.reset()" style="margin-top:auto;font-size:11px;width:100%">Azzera filtri</button>
+        </div>
+
+        <!-- Results -->
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+          <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-3)" id="srch-count"></div>
+          <div id="srch-list" style="flex:1;overflow-y:auto;padding-top:6px"></div>
+        </div>
+
       </div>
 
       <div class="view" id="view-settings">
@@ -244,20 +282,60 @@
 
 <!-- MODALS -->
 <div class="modal-overlay hidden" id="modal-firma">
-  <div class="modal">
+  <div class="modal sig-modal">
     <div class="modal-head">
-      <span class="modal-title">Firma digitale</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span class="modal-title">Firma cliente e allega al rapporto</span>
+      </span>
       <button class="modal-close" onclick="App.closeModal('firma')">×</button>
     </div>
     <div class="modal-body">
-      <canvas id="firma-canvas" width="440" height="200" style="width:100%;border:1px solid var(--border-2);border-radius:8px;touch-action:none;cursor:crosshair;background:var(--bg-elev)"></canvas>
-      <div style="margin-top:8px;display:flex;gap:8px">
-        <button class="btn sm" onclick="App.firmaClear()">Pulisci</button>
+      <div class="sig-info">
+        <div class="sig-info-badge">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div>
+          <div class="sig-info-client" id="sig-info-client">—</div>
+          <div class="sig-info-meta" id="sig-info-meta">—</div>
+        </div>
+      </div>
+      <div class="sig-workspace">
+        <div>
+          <div style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">Firma del cliente</div>
+          <div class="sig-canvas-wrap" id="sig-canvas-wrap">
+            <div class="sig-canvas-placeholder" id="sig-canvas-placeholder">
+              <div class="sig-cp-line"></div>
+              <div class="sig-cp-txt">Firma qui con dito, penna o mouse</div>
+            </div>
+            <canvas id="firma-canvas"></canvas>
+          </div>
+          <div class="sig-tools">
+            <div class="sig-tools-l">
+              <button class="sig-pen-size on" title="Penna sottile" onclick="App.firmaPenSize(this,2)">●</button>
+              <button class="sig-pen-size" title="Penna media" onclick="App.firmaPenSize(this,3.5)" style="font-size:14px">●</button>
+              <button class="sig-pen-size" title="Penna spessa" onclick="App.firmaPenSize(this,6)" style="font-size:18px">●</button>
+              <button class="sig-clear" onclick="App.firmaClear()">Cancella</button>
+            </div>
+            <div style="font-size:10px;color:var(--text-3)">Il PDF verrà rigenerato dopo la conferma</div>
+          </div>
+          <div class="sig-legal" id="sig-legal">Il cliente conferma il lavoro svolto. Dopo la conferma, firma e timestamp vengono collegati al rapporto.</div>
+        </div>
+        <div class="sig-checklist">
+          <div class="df-lbl" style="margin-bottom:6px">Stato rapporto</div>
+          <div class="sig-check-row"><span>Intervento selezionato</span><span class="sig-ok">OK</span></div>
+          <div class="sig-check-row"><span>Dati cliente</span><span class="sig-ok">OK</span></div>
+          <div class="sig-check-row"><span>PDF pronto</span><span class="sig-ok">OK</span></div>
+          <div class="sig-check-row"><span>Firma</span><span id="sig-check-firma" style="color:var(--amber);font-weight:800">in attesa</span></div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="App.closeModal('firma')">Annulla</button>
-      <button class="btn primary" onclick="App.firmaConfirm()">Salva firma</button>
+      <button class="btn" onclick="App.closeModal('firma')">Annulla <span class="key">Esc</span></button>
+      <button class="btn primary" onclick="App.firmaConfirm()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Conferma e salva <span class="key">⌃↵</span>
+      </button>
     </div>
   </div>
 </div>
@@ -294,6 +372,7 @@
 </div>
 
 <div id="toast-container"></div>
+<script src="search.js"></script>
 <script src="calendar.js"></script>
 <script src="app.js"></script>
 </body>
