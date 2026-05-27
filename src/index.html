@@ -252,8 +252,14 @@
 
       </div>
 
-      <div class="view" id="view-settings">
-        <div style="padding:20px;color:var(--text-3)">Impostazioni — in costruzione</div>
+      <div class="view" id="view-settings" style="flex-direction:row">
+
+        <!-- Left nav -->
+        <div id="st-nav" style="width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto"></div>
+
+        <!-- Content -->
+        <div id="st-body" style="flex:1;overflow-y:auto;padding:20px 24px;max-width:680px"></div>
+
       </div>
 
     </div>
@@ -373,6 +379,7 @@
 
 <div id="toast-container"></div>
 <script src="search.js"></script>
+<script src="settings.js"></script>
 <script src="calendar.js"></script>
 <script src="app.js"></script>
 </body>

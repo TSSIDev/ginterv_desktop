@@ -375,6 +375,7 @@ const App = {
     document.getElementById('toolbar-new').style.display = view === 'new' ? 'none' : '';
     if (view === 'calendar') Calendar.onNavigate();
     else if (view === 'search') Search.onNavigate();
+    else if (view === 'settings') Settings.onNavigate();
     else this.renderSidebarAccounts();
   },
 
