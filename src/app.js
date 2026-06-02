@@ -694,6 +694,57 @@ const App = {
     mkFuzzy('fuzzy-sigla-wrap',    dd.sigla || [],            'Es. ML', 'sigla');
     mkFuzzy('fuzzy-tariffa-wrap',  dd.tipo_tariffa || [],     'Tariffa…', 'tariffa');
     mkFuzzy('fuzzy-addebito-wrap', dd.tipo_addebito || [],    'Addebito…', 'addebito');
+    this.initNoteEditor();
+  },
+
+  initNoteEditor() {
+    const ed = document.getElementById('f-note');
+    if (!ed || ed._wired) return;
+    ed._wired = true;
+    const toolbar = ed.closest('.note-editor')?.querySelector('.note-toolbar');
+    const buttons = toolbar ? Array.from(toolbar.querySelectorAll('.note-tool')) : [];
+    const refresh = () => buttons.forEach(b => {
+      let active = false;
+      try { active = document.queryCommandState(b.dataset.cmd); } catch {}
+      b.classList.toggle('on', active);
+    });
+    buttons.forEach(b => {
+      // Keep the editor selection when pressing a toolbar button.
+      b.addEventListener('mousedown', e => e.preventDefault());
+      b.addEventListener('click', () => {
+        ed.focus();
+        try { document.execCommand(b.dataset.cmd, false, null); } catch {}
+        refresh();
+      });
+    });
+    ed.addEventListener('keyup', refresh);
+    ed.addEventListener('mouseup', refresh);
+    ed.addEventListener('focus', refresh);
+    // Sanitize pasted content before it enters the live editor.
+    ed.addEventListener('paste', e => {
+      e.preventDefault();
+      const cd = e.clipboardData;
+      const html = cd?.getData('text/html');
+      if (html) {
+        document.execCommand('insertHTML', false, sanitizeNote(html));
+      } else {
+        document.execCommand('insertText', false, cd?.getData('text/plain') || '');
+      }
+    });
+  },
+
+  getNoteHtml() {
+    const ed = document.getElementById('f-note');
+    if (!ed) return '';
+    // An "empty" contenteditable can still hold <br>/<div>; treat no text +
+    // no structural content as empty.
+    if (!ed.textContent.trim() && !/<(table|ul|ol|li)/i.test(ed.innerHTML)) return '';
+    return ed.innerHTML.trim();
+  },
+
+  setNoteHtml(html) {
+    const ed = document.getElementById('f-note');
+    if (ed) ed.innerHTML = html || '';
   },
 
   resetForm() {
