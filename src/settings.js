@@ -9,17 +9,40 @@ const Settings = {
   _sigCtx: null,
   _sigCanvas: null,
   _sigHasDrawn: false,
+  // Cached data loaded upfront
+  _dropdownData: {},
+  _techSigB64: null,
+  _syncInterval: 15,
 
   async onNavigate() {
+    this._section = 'account';
+    this._addMode = false;
     this._accounts = await invoke('list_accounts_cmd').catch(() => []);
+    const email = (this._accounts[0] || {}).email || '';
+
+    // Load all async data at once — navigation is then fully synchronous
+    const [dd, sig, interval] = await Promise.all([
+      invoke('get_dropdown_data').catch(() => ({})),
+      email ? invoke('get_config_value', { key: 'tech_signature_' + email }).catch(() => null) : Promise.resolve(null),
+      invoke('get_config_value', { key: 'sync_interval_minutes' }).catch(() => null),
+    ]);
+    this._dropdownData = dd || {};
+    this._techSigB64   = sig || null;
+    this._syncInterval = interval ? parseInt(interval) : 15;
+
     this._render();
   },
 
-  _render() {
-    const nav = document.getElementById('st-nav');
-    const body = document.getElementById('st-body');
-    if (!nav || !body) return;
+  // ── Nav ─────────────────────────────────────────────────────────────
 
+  _render() {
+    this._renderNav();
+    this._renderBody();
+  },
+
+  _renderNav() {
+    const nav = document.getElementById('st-nav');
+    if (!nav) return;
     const sections = [
       { id: 'account',  label: 'Account Exchange' },
       { id: 'firma',    label: 'Firma tecnico' },
@@ -28,46 +51,41 @@ const Settings = {
       { id: 'dropdown', label: 'Dati dropdown' },
       { id: 'info',     label: 'Informazioni' },
     ];
-
     nav.innerHTML = sections.map(s =>
-      `<button class="st-nav-btn${this._section === s.id ? ' on' : ''}"
-        onclick="Settings.showSection(${JSON.stringify(s.id)})">${s.label}</button>`
+      `<button class="st-nav-btn${this._section === s.id ? ' on' : ''}" data-s="${s.id}"
+        onclick="Settings.switchSection('${s.id}')">${s.label}</button>`
     ).join('');
-
-    this._renderSection(body);
   },
 
-  async showSection(s) {
+  switchSection(s) {
     this._section = s;
     this._addMode = false;
     document.querySelectorAll('.st-nav-btn').forEach(b =>
       b.classList.toggle('on', b.dataset.s === s)
     );
-    const body = document.getElementById('st-body');
-    if (body) await this._renderSection(body);
-    // re-render nav so active state is always in sync
-    this._render();
+    this._renderBody();
   },
 
-  async _renderSection(body) {
+  _renderBody() {
+    const body = document.getElementById('st-body');
+    if (!body) return;
     switch (this._section) {
-      case 'account':  this._renderAccount(body); break;
-      case 'firma':    await this._renderFirma(body); break;
-      case 'sync':     await this._renderSync(body); break;
-      case 'aspetto':  this._renderAspetto(body); break;
-      case 'dropdown': await this._renderDropdown(body); break;
-      case 'info':     this._renderInfo(body); break;
+      case 'account':  this._renderAccount(body);  break;
+      case 'firma':    this._renderFirma(body);    break;
+      case 'sync':     this._renderSync(body);     break;
+      case 'aspetto':  this._renderAspetto(body);  break;
+      case 'dropdown': this._renderDropdown(body); break;
+      case 'info':     this._renderInfo(body);     break;
     }
   },
 
-  // ── Account Exchange ──────────────────────────────────────────────────
+  // ── Account Exchange ─────────────────────────────────────────────────
 
   _renderAccount(body) {
     if (this._addMode) {
       body.innerHTML = this._addFormHTML();
       return;
     }
-
     const rows = this._accounts.map(a => `
       <div class="st-acc-row">
         <div class="st-acc-badge">${escHtml((a.sigla || a.email[0] || '?').toUpperCase())}</div>
@@ -80,7 +98,7 @@ const Settings = {
           </div>
         </div>
         <button class="btn" style="color:var(--red);border-color:var(--red)"
-          onclick="Settings._deleteAccount(${JSON.stringify(a.email)})">Elimina</button>
+          onclick="Settings._deleteAccount(${escHtml(JSON.stringify(a.email))})">Elimina</button>
       </div>
     `).join('');
 
@@ -189,19 +207,20 @@ const Settings = {
     if (btn) { btn.disabled = true; btn.textContent = 'Salvataggio…'; }
     try {
       await invoke('save_account', { input: {
-        email:       this._addData.email,
-        password:    this._addData.password,
-        server:      this._addData.server || null,
-        domain:      this._addData.domain || null,
-        displayName: this._addData.displayName || null,
-        sigla:       this._addData.sigla || null,
-        isPrimary:   this._accounts.length === 0,
+        email:        this._addData.email,
+        password:     this._addData.password,
+        server:       this._addData.server || null,
+        domain:       this._addData.domain || null,
+        display_name: this._addData.displayName || null,
+        sigla:        this._addData.sigla || null,
+        is_primary:   this._accounts.length === 0,
       }});
       this._accounts = await invoke('list_accounts_cmd').catch(() => []);
       App.accounts = this._accounts;
+      App.renderSidebarAccounts();
       this._addMode = false;
       toast('Account salvato', 'success');
-      this._render();
+      this._renderBody();
     } catch(e) {
       toast('Errore: ' + e, 'error');
       if (btn) { btn.disabled = false; btn.textContent = 'Salva'; }
@@ -210,18 +229,17 @@ const Settings = {
 
   _cancelAdd() {
     this._addMode = false;
-    const body = document.getElementById('st-body');
-    if (body) this._renderAccount(body);
+    this._renderBody();
   },
 
   async _deleteAccount(email) {
-    if (!confirm(`Eliminare l'account ${email}?`)) return;
+    if (!confirm('Eliminare l\'account ' + email + '?')) return;
     try {
       await invoke('delete_account_cmd', { email });
       this._accounts = await invoke('list_accounts_cmd').catch(() => []);
       App.accounts = this._accounts;
-      const body = document.getElementById('st-body');
-      if (body) this._renderAccount(body);
+      App.renderSidebarAccounts();
+      this._renderBody();
       toast('Account eliminato', 'success');
     } catch(e) {
       toast('Errore: ' + e, 'error');
@@ -230,25 +248,19 @@ const Settings = {
 
   // ── Firma tecnico ─────────────────────────────────────────────────────
 
-  async _renderFirma(body) {
-    const email = (App.accounts || [])[0]?.email || '';
-    let existingB64 = null;
-    if (email) {
-      existingB64 = await invoke('get_config_value', { key: `tech_signature_${email}` }).catch(() => null);
-    }
-
+  _renderFirma(body) {
     body.innerHTML = `
       <div class="st-section-hdr">Firma tecnico</div>
       <div class="st-section-desc">La firma viene incorporata nei PDF degli interventi.</div>
-      ${existingB64 ? `
+      ${this._techSigB64 ? `
         <div style="margin:14px 0 10px">
           <div class="fg-lbl" style="margin-bottom:6px">Firma attuale</div>
-          <div style="background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px;display:inline-block">
-            <img src="data:image/png;base64,${existingB64}" style="max-width:320px;max-height:80px;display:block" alt="firma">
+          <div style="background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:8px;padding:10px;display:inline-block">
+            <img src="data:image/png;base64,${this._techSigB64}" style="max-width:320px;max-height:80px;display:block" alt="firma">
           </div>
         </div>
       ` : ''}
-      <div class="fg-lbl" style="margin-bottom:6px">${existingB64 ? 'Aggiorna firma' : 'Disegna la tua firma'}</div>
+      <div class="fg-lbl" style="margin-bottom:6px">${this._techSigB64 ? 'Aggiorna firma' : 'Disegna la tua firma'}</div>
       <div class="sig-canvas-wrap" id="st-sig-wrap" style="height:160px;cursor:crosshair">
         <div class="sig-canvas-placeholder" id="st-sig-placeholder">
           <div class="sig-cp-line"></div>
@@ -259,36 +271,31 @@ const Settings = {
       <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
         <button class="sig-clear" onclick="Settings.clearFirma()">Cancella</button>
         <div style="flex:1"></div>
-        ${email
-          ? `<button class="btn primary" onclick="Settings._saveFirma()">Salva firma</button>`
-          : `<span style="font-size:11px;color:var(--text-3)">Configura prima un account Exchange</span>`
-        }
+        <button class="btn primary" onclick="Settings._saveFirma()">Salva firma</button>
       </div>
     `;
-
     this._initSigCanvas();
   },
 
   _initSigCanvas() {
     const canvas = document.getElementById('st-sig-canvas');
-    const wrap = document.getElementById('st-sig-wrap');
+    const wrap   = document.getElementById('st-sig-wrap');
     if (!canvas || !wrap) return;
 
-    canvas.width = wrap.clientWidth;
-    canvas.height = wrap.clientHeight;
+    canvas.width  = wrap.clientWidth  || 400;
+    canvas.height = wrap.clientHeight || 160;
 
     const ctx = canvas.getContext('2d');
     ctx.strokeStyle = document.body.classList.contains('theme-light') ? '#1e2d4a' : '#e8edf5';
     ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
+    ctx.lineCap  = 'round';
     ctx.lineJoin = 'round';
 
-    this._sigCanvas = canvas;
-    this._sigCtx = ctx;
+    this._sigCanvas  = canvas;
+    this._sigCtx     = ctx;
     this._sigHasDrawn = false;
 
-    let drawing = false;
-    let lastX = 0, lastY = 0;
+    let drawing = false, lastX = 0, lastY = 0;
 
     const getPos = e => {
       const r = canvas.getBoundingClientRect();
@@ -296,11 +303,8 @@ const Settings = {
       return [src.clientX - r.left, src.clientY - r.top];
     };
 
-    canvas.addEventListener('mousedown', e => {
-      drawing = true;
-      [lastX, lastY] = getPos(e);
-    });
-    canvas.addEventListener('mousemove', e => {
+    canvas.onmousedown = e => { drawing = true; [lastX, lastY] = getPos(e); };
+    canvas.onmousemove = e => {
       if (!drawing) return;
       const [x, y] = getPos(e);
       ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
@@ -310,13 +314,12 @@ const Settings = {
         const ph = document.getElementById('st-sig-placeholder');
         if (ph) ph.style.display = 'none';
       }
-    });
-    canvas.addEventListener('mouseup',    () => { drawing = false; });
-    canvas.addEventListener('mouseleave', () => { drawing = false; });
-    canvas.addEventListener('touchstart', e => {
+    };
+    canvas.onmouseup = canvas.onmouseleave = () => { drawing = false; };
+    canvas.ontouchstart = e => {
       e.preventDefault(); drawing = true; [lastX, lastY] = getPos(e);
-    }, { passive: false });
-    canvas.addEventListener('touchmove', e => {
+    };
+    canvas.ontouchmove = e => {
       if (!drawing) return;
       e.preventDefault();
       const [x, y] = getPos(e);
@@ -325,8 +328,8 @@ const Settings = {
       this._sigHasDrawn = true;
       const ph = document.getElementById('st-sig-placeholder');
       if (ph) ph.style.display = 'none';
-    }, { passive: false });
-    canvas.addEventListener('touchend', () => { drawing = false; });
+    };
+    canvas.ontouchend = () => { drawing = false; };
   },
 
   clearFirma() {
@@ -338,15 +341,15 @@ const Settings = {
   },
 
   async _saveFirma() {
-    if (!this._sigCanvas || !this._sigHasDrawn) { toast('Disegna prima la firma', 'error'); return; }
+    if (!this._sigCanvas || !this._sigHasDrawn) { toast('Disegna prima la firma', 'warning'); return; }
     const b64 = this._sigCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
-    const email = (App.accounts || [])[0]?.email || '';
+    const email = (this._accounts[0] || {}).email || '';
     if (!email) { toast('Nessun account configurato', 'error'); return; }
     try {
-      await invoke('set_config_value', { key: `tech_signature_${email}`, value: b64 });
+      await invoke('set_config_value', { key: 'tech_signature_' + email, value: b64 });
+      this._techSigB64 = b64;
       toast('Firma salvata', 'success');
-      const body = document.getElementById('st-body');
-      if (body) await this._renderFirma(body);
+      this._renderBody();
     } catch(e) {
       toast('Errore: ' + e, 'error');
     }
@@ -354,10 +357,8 @@ const Settings = {
 
   // ── Sync & cache ──────────────────────────────────────────────────────
 
-  async _renderSync(body) {
-    const intervalRaw = await invoke('get_config_value', { key: 'sync_interval_minutes' }).catch(() => null);
-    const interval = intervalRaw ? parseInt(intervalRaw) : 15;
-
+  _renderSync(body) {
+    const interval = this._syncInterval;
     body.innerHTML = `
       <div class="st-section-hdr">Intervallo sincronizzazione</div>
       <div class="fg" style="max-width:280px;margin-top:4px">
@@ -372,9 +373,9 @@ const Settings = {
       <div class="st-section-desc">Rimuove gli interventi in cache. Al prossimo sync verranno riscaricati da Exchange.</div>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
         ${this._accounts.map(a => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:8px">
             <div style="flex:1;font-size:12px;color:var(--text-2)">${escHtml(a.email)}</div>
-            <button class="btn" onclick="Settings._clearCache(${JSON.stringify(a.email)})">Svuota cache</button>
+            <button class="btn" onclick="Settings._clearCache(${escHtml(JSON.stringify(a.email))})">Svuota cache</button>
           </div>
         `).join('') || '<div style="font-size:12px;color:var(--text-3)">Nessun account configurato.</div>'}
       </div>
@@ -384,8 +385,10 @@ const Settings = {
   async _saveInterval() {
     const sel = document.getElementById('st-sync-interval');
     if (!sel) return;
+    const val = sel.value;
     try {
-      await invoke('set_config_value', { key: 'sync_interval_minutes', value: sel.value });
+      await invoke('set_config_value', { key: 'sync_interval_minutes', value: val });
+      this._syncInterval = parseInt(val);
       toast('Intervallo salvato', 'success');
     } catch(e) {
       toast('Errore: ' + e, 'error');
@@ -393,7 +396,7 @@ const Settings = {
   },
 
   async _clearCache(email) {
-    if (!confirm(`Svuotare la cache di ${email}?`)) return;
+    if (!confirm('Svuotare la cache di ' + email + '?')) return;
     try {
       await invoke('clear_cache', { email });
       toast('Cache svuotata', 'success');
@@ -408,32 +411,48 @@ const Settings = {
     const isLight = document.body.classList.contains('theme-light');
     body.innerHTML = `
       <div class="st-section-hdr">Aspetto</div>
-      <div style="margin-top:8px">
-        <div class="fg-lbl" style="margin-bottom:10px">Tema</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn${!isLight ? ' primary' : ''}" onclick="Settings._setTheme('dark')">
-            ☾ Scuro
-          </button>
-          <button class="btn${isLight ? ' primary' : ''}" onclick="Settings._setTheme('light')">
-            ☀ Chiaro
+      <div class="st-setting-list">
+        <div class="st-setting-row">
+          <div>
+            <div class="st-setting-label">Tema</div>
+            <div class="st-setting-desc">Usa il tema ${isLight ? 'chiaro' : 'scuro'} per l'interfaccia.</div>
+          </div>
+          <button class="st-theme-switch${isLight ? ' light' : ''}" type="button" role="switch"
+            aria-checked="${isLight ? 'true' : 'false'}" aria-label="Tema chiaro"
+            onclick="Settings._toggleTheme()">
+            <span class="st-theme-thumb"></span>
+            <span class="st-theme-option st-theme-dark">☾ Scuro</span>
+            <span class="st-theme-option st-theme-light">☀ Chiaro</span>
           </button>
         </div>
       </div>
     `;
   },
 
+  _toggleTheme() {
+    const next = document.body.classList.contains('theme-light') ? 'dark' : 'light';
+    this._setTheme(next);
+  },
+
   _setTheme(t) {
-    document.body.classList.toggle('theme-light', t === 'light');
+    const isLight = t === 'light';
+    document.body.classList.toggle('theme-light', isLight);
     localStorage.setItem('gi-theme', t);
-    document.getElementById('theme-btn').textContent = t === 'light' ? '☀' : '☾';
-    const body = document.getElementById('st-body');
-    if (body) this._renderAspetto(body);
+    const themeBtn = document.getElementById('theme-btn');
+    if (themeBtn) themeBtn.textContent = isLight ? '☀' : '☾';
+    const sw = document.querySelector('.st-theme-switch');
+    if (sw) {
+      sw.classList.toggle('light', isLight);
+      sw.setAttribute('aria-checked', isLight ? 'true' : 'false');
+    }
+    const desc = document.querySelector('.st-setting-desc');
+    if (desc) desc.textContent = `Usa il tema ${isLight ? 'chiaro' : 'scuro'} per l'interfaccia.`;
   },
 
   // ── Dropdown data ─────────────────────────────────────────────────────
 
-  async _renderDropdown(body) {
-    const dd = await invoke('get_dropdown_data').catch(() => ({}));
+  _renderDropdown(body) {
+    const dd = this._dropdownData;
     const lists = [
       { key: 'sigla',            label: 'Sigle tecnici' },
       { key: 'clienti',         label: 'Clienti' },
@@ -453,7 +472,7 @@ const Settings = {
             <div class="st-dd-lbl">${l.label}</div>
             <textarea class="fg-in st-dd-ta" id="st-dd-${l.key}" rows="6" spellcheck="false">${(dd[l.key] || []).join('\n')}</textarea>
             <button class="btn" style="margin-top:6px;width:100%;font-size:11px"
-              onclick="Settings._saveDd(${JSON.stringify(l.key)})">Salva</button>
+              onclick="Settings._saveDd('${l.key}')">Salva</button>
           </div>
         `).join('')}
       </div>
@@ -461,13 +480,16 @@ const Settings = {
   },
 
   async _saveDd(key) {
-    const ta = document.getElementById(`st-dd-${key}`);
+    const ta = document.getElementById('st-dd-' + key);
     if (!ta) return;
     const items = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
     try {
       await invoke('set_dropdown_list', { listName: key, items });
+      if (!this._dropdownData) this._dropdownData = {};
+      this._dropdownData[key] = items;
       toast('Lista salvata', 'success');
       await App.loadDropdowns();
+      App.initForm();
     } catch(e) {
       toast('Errore: ' + e, 'error');
     }
@@ -481,7 +503,6 @@ const Settings = {
       <div class="st-kv" style="margin-top:8px">
         <div class="st-kv-row"><span class="st-kv-lbl">Applicazione</span><span>Gestore Interventi Desktop</span></div>
         <div class="st-kv-row"><span class="st-kv-lbl">Versione</span><span>0.1.0</span></div>
-        <div class="st-kv-row"><span class="st-kv-lbl">Sviluppato da</span><span>TSSI</span></div>
         <div class="st-kv-row"><span class="st-kv-lbl">Backend</span><span>Tauri 2 · Rust</span></div>
         <div class="st-kv-row"><span class="st-kv-lbl">Database locale</span><span>SQLite</span></div>
         <div class="st-kv-row"><span class="st-kv-lbl">Sincronizzazione</span><span>EWS (Exchange Web Services)</span></div>

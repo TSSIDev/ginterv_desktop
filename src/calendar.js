@@ -1,13 +1,13 @@
 // calendar.js — week / day / month calendar views
 
 const Calendar = (() => {
-  const H_S = 7, H_E = 20, H_PX = 64;
+  const H_S = 0, H_E = 24, H_PX = 96;
   const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
   const MONTHS_S = MONTHS.map(m => m.slice(0,3));
   const DOW = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
 
-  const PALETTE = ['#5b9cf6','#7ee8a2','#ffc77a','#bb9af7','#e99b8b','#6ed7d1','#ef7d82','#f8c76a'];
+  const PALETTE = ['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)','var(--cat-5)','var(--cat-6)','var(--cat-7)','var(--cat-8)'];
   function colorOf(sigla) {
     let h = 0;
     for (const c of (sigla || '')) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
@@ -31,17 +31,97 @@ const Calendar = (() => {
            a.getMonth() === b.getMonth() &&
            a.getDate() === b.getDate();
   }
-  function isoDay(d) { return d.toISOString().slice(0,10); }
+  function isoDay(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function parseISO(s) { return s ? new Date(s) : null; }
 
   // state
-  let currentView = 'week';
+  let currentView = 'day';
   let today = new Date(); today.setHours(0,0,0,0);
   let weekStart = getMon(today);
   let currentDay = new Date(today);
   let miniDate = new Date(today.getFullYear(), today.getMonth(), 1);
   let techFilter = 'all';
   let selectedItem = null;
+
+  // Drag-to-create state
+  let _drag = null;
+  let _pendingCreate = null;
+
+  function _yToTime(relY, round = false) {
+    const colH = (H_E - H_S) * H_PX;
+    const slots = Math.max(0, Math.min(1, relY / colH)) * (H_E - H_S) * 60 / 15;
+    const totalMin = (round ? Math.round(slots) : Math.floor(slots)) * 15;
+    const absMin = H_S * 60 + totalMin;
+    return [Math.min(Math.floor(absMin / 60), H_E - 1), absMin % 60];
+  }
+
+  function _onDragMove(e) {
+    if (!_drag) return;
+    const [eh, em] = _yToTime(e.clientY - _drag.rect.top, true);
+    const startTot = (_drag.sh - H_S) * 60 + _drag.sm;
+    const endTot   = (eh  - H_S) * 60 + em;
+    const topPx = startTot * H_PX / 60;
+    const htPx  = Math.max(H_PX / 4, (endTot - startTot) * H_PX / 60);
+    if (endTot >= startTot) {
+      _drag.ghost.style.top    = topPx + 'px';
+      _drag.ghost.style.height = htPx  + 'px';
+      _drag.curH = eh; _drag.curM = em;
+    }
+  }
+
+  function _onDragUp(e) {
+    if (!_drag) return;
+    document.removeEventListener('mousemove', _onDragMove);
+    document.removeEventListener('mouseup', _onDragUp);
+    const { isoDate, sh, sm, curH, curM, ghost } = _drag;
+    ghost.remove();
+    _drag = null;
+    const dragged = !(curH === sh && curM === sm);
+    // Plain click on empty grid: if an event is selected, just deselect it
+    // (don't assume the user wants to create). Only create when nothing is
+    // selected, or when the user actually dragged out a time range.
+    if (!dragged && selectedItem) {
+      selectedItem = null;
+      App.clearDetail();
+      if (currentView === 'week') renderWeek();
+      else if (currentView === 'day') renderDay();
+      return;
+    }
+    let eh = curH, em = curM;
+    if (eh === sh && em === sm) { eh = Math.min(sh + 1, H_E - 1); }
+    _showCreateModal(isoDate, sh, sm, eh, em, e.clientX, e.clientY);
+  }
+
+  function _showCreateModal(isoDate, sh, sm, eh, em, cx, cy) {
+    _dismissCreateModal();
+    _pendingCreate = { isoDate, sh, sm, eh, em };
+    const d = new Date(isoDate + 'T00:00:00');
+    const dateStr = `${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    const timeStr = `${hm(sh, sm)} – ${hm(eh, em)}`;
+    const info = document.getElementById('cal-cm-info');
+    if (info) info.innerHTML = `<div class="cal-cm-date">${dateStr}</div><div class="cal-cm-time">${timeStr}</div>`;
+    const modal = document.getElementById('cal-create-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden', 'closing');
+    const mw = 230, mh = 130;
+    modal.style.left = Math.min(cx + 10, window.innerWidth  - mw - 8) + 'px';
+    modal.style.top  = Math.max(8, Math.min(cy - mh / 2, window.innerHeight - mh - 8)) + 'px';
+    setTimeout(() => document.addEventListener('mousedown', _onCreateOutsideDown, true), 0);
+  }
+
+  function _onCreateOutsideDown(e) {
+    const modal = document.getElementById('cal-create-modal');
+    if (!modal || modal.classList.contains('hidden') || modal.contains(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _dismissCreateModal();
+  }
+
+  function _dismissCreateModal() {
+    document.removeEventListener('mousedown', _onCreateOutsideDown, true);
+    closeOverlay('cal-create-modal');
+    _pendingCreate = null;
+  }
 
   function getItems() { return (typeof App !== 'undefined' && App.interventions) || []; }
 
@@ -56,6 +136,7 @@ const Calendar = (() => {
       sigla: item.nome_tecnico || '?',
       client: item.ragione_sociale || '—',
       tipo: item.descrizione || '',
+      altro: item.altro || '',
       color: colorOf(item.nome_tecnico),
       startD: start,
       sh: start.getHours(),
@@ -74,6 +155,43 @@ const Calendar = (() => {
   function getFilteredItems() {
     const all = getDisplayItems();
     return techFilter === 'all' ? all : all.filter(i => i.sigla === techFilter);
+  }
+
+  // ── Overlap layout ───────────────────────────────────────────────────
+
+  function layoutItems(items) {
+    // Sort: earlier start first, then longer duration first (priority to bigger)
+    const sorted = [...items].sort((a, b) => {
+      const aS = a.sh * 60 + a.sm, bS = b.sh * 60 + b.sm;
+      return aS !== bS ? aS - bS : b.dur - a.dur;
+    });
+
+    const tracks = [];          // tracks[t] = events assigned to track t
+    const evTrack = new Map();  // exchange_item_id -> track index
+
+    for (const ev of sorted) {
+      const evS = ev.sh * 60 + ev.sm, evE = evS + ev.dur;
+      let placed = false;
+      for (let t = 0; t < tracks.length; t++) {
+        const clash = tracks[t].some(o => {
+          const oS = o.sh * 60 + o.sm;
+          return evS < oS + o.dur && evE > oS;
+        });
+        if (!clash) { tracks[t].push(ev); evTrack.set(ev.exchange_item_id, t); placed = true; break; }
+      }
+      if (!placed) { tracks.push([ev]); evTrack.set(ev.exchange_item_id, tracks.length - 1); }
+    }
+
+    return sorted.map(ev => {
+      const evS = ev.sh * 60 + ev.sm, evE = evS + ev.dur;
+      const col = evTrack.get(ev.exchange_item_id);
+      let numCols = col + 1;
+      for (let t = col + 1; t < tracks.length; t++) {
+        if (tracks[t].some(o => { const oS = o.sh * 60 + o.sm; return evS < oS + o.dur && evE > oS; }))
+          numCols = t + 1;
+      }
+      return { ...ev, _col: col, _numCols: numCols };
+    });
   }
 
   // ── Render helpers ───────────────────────────────────────────────────
@@ -137,15 +255,15 @@ const Calendar = (() => {
     const el = document.getElementById('sidebar-accounts');
     if (!el) return;
 
-    const items = getFilteredItems();
     const allItems = getDisplayItems();
 
     // Collect unique siglas for tech filter
     const siglaMap = {};
     allItems.forEach(i => { siglaMap[i.sigla] = (siglaMap[i.sigla] || 0) + 1; });
     const siglas = Object.keys(siglaMap).sort();
+    if (techFilter !== 'all' && !siglas.includes(techFilter)) techFilter = 'all';
 
-    const totalVisible = items.length;
+    const items = getFilteredItems();
     const allOnscreen = allItems.length;
 
     // Stats for current period
@@ -186,7 +304,7 @@ const Calendar = (() => {
           </div>
           ${siglas.map(s => `
             <div class="tech-row ${techFilter === s ? 'on' : ''}" onclick="Calendar._setTech(${JSON.stringify(s)},this)">
-              <div class="tech-av" style="background:${colorOf(s)};color:#111">${s}</div>
+              <div class="tech-av" style="background:color-mix(in oklch, ${colorOf(s)} 20%, transparent);color:${colorOf(s)}">${s}</div>
               <div class="tech-name">${s}</div>
               <div class="tech-cnt">${siglaMap[s]}</div>
             </div>`).join('')}
@@ -198,6 +316,13 @@ const Calendar = (() => {
         <div class="stat-row"><div class="stat-lbl">Ore totali</div><div class="stat-val b">${minHM(totalHrs)}</div></div>
       </div>`;
     renderMini();
+  }
+
+  function syncViewButtons() {
+    document.querySelectorAll('[data-cal-view]').forEach(b => {
+      b.classList.toggle('on', b.dataset.calView === currentView);
+    });
+    if (typeof syncSeg === 'function') syncSeg(document.querySelector('#view-calendar .view-sw'));
   }
 
   // ── Week view ────────────────────────────────────────────────────────
@@ -219,8 +344,8 @@ const Calendar = (() => {
 
     // Grid
     let lbls = '';
-    for (let h = H_S; h <= H_E; h++)
-      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${h < H_E ? hm(h, 0) : ''}</div>`;
+    for (let h = H_S; h < H_E; h++)
+      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${hm(h, 0)}</div>`;
 
     let days = '';
     for (let d = 0; d < 7; d++) {
@@ -236,19 +361,24 @@ const Calendar = (() => {
       }
 
       let blocks = '';
-      dayItems.forEach(iv => {
+      layoutItems(dayItems).forEach(iv => {
         const top = ((iv.sh - H_S) + iv.sm / 60) * H_PX + 2;
         const ht = Math.max((iv.dur / 60) * H_PX - 4, 20);
         const isSel = selectedItem?.exchange_item_id === iv.exchange_item_id;
         const endMin = iv.sh * 60 + iv.sm + iv.dur;
         const sig = iv.firmato ? '✓' : '·';
-        blocks += `<div class="iv${isSel ? ' sel' : ''}" style="color:${iv.color};border-color:${iv.color};top:${top}px;height:${ht}px"
-          onclick="Calendar._select(${JSON.stringify(JSON.stringify(iv._raw))})">
-          <div class="iv-t">${hm(iv.sh, iv.sm)} – ${hm(Math.floor(endMin/60), endMin%60)}</div>
-          <div class="iv-c">${iv.client}</div>
-          ${ht > 44 ? `<div class="iv-tp">${iv.tipo}</div>` : ''}
-          <div class="iv-s">${sig}</div>
-        </div>`;
+        const pct = 100 / iv._numCols;
+        const lPct = iv._col * pct;
+        const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
+        const innerHtml = ht < 26
+          ? `<div style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="opacity:.75;font-variant-numeric:tabular-nums">${timeStr}</span> <span style="font-weight:700;color:var(--text-1)">${iv.client}</span></div>`
+          : ht < 46
+          ? `<div class="iv-t">${timeStr}</div><div class="iv-c" style="font-size:10px">${iv.client}${iv.altro ? `<span class="iv-tp" style="display:inline;margin-left:4px;font-weight:400"> · ${iv.altro}</span>` : ''}</div>`
+          : `<div class="iv-t">${timeStr}</div><div class="iv-c">${iv.client}</div>${iv.altro ? `<div class="iv-tp" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 60 && iv.tipo ? `<div class="iv-tp">${iv.tipo}</div>` : '')}<div class="iv-s">${sig}</div>`;
+        const padStyle = ht < 26 ? 'padding:2px 4px' : ht < 46 ? 'padding:3px 5px' : '';
+        blocks += `<div class="iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
+          onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}</div>`;
       });
 
       let nowLine = '';
@@ -258,7 +388,7 @@ const Calendar = (() => {
           nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
       }
 
-      days += `<div class="day-col" style="height:${tot}px">${lines}${blocks}${nowLine}</div>`;
+      days += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')">${lines}${blocks}${nowLine}</div>`;
     }
 
     const inner = document.getElementById('cal-tgrid-inner');
@@ -274,51 +404,67 @@ const Calendar = (() => {
     const nH = H_E - H_S, tot = nH * H_PX;
     const items = getFilteredItems().filter(i => sameD(i.startD, currentDay));
 
-    // Collect unique siglas for this day
-    const daySiglas = [...new Set(items.map(i => i.sigla))].sort();
-    if (!daySiglas.length) daySiglas.push('—');
+    const showTechHeader = techFilter !== 'all';
+    const daySiglas = showTechHeader
+      ? [...new Set(items.map(i => i.sigla))].sort()
+      : ['all'];
 
     // Header
-    let head = '<div class="day-gutter"></div>';
-    daySiglas.forEach(s => {
-      head += `<div class="day-tech-col">
-        <div class="dtc-sig" style="color:${colorOf(s)}">${s}</div>
-        <div class="dtc-name">${s}</div>
-      </div>`;
-    });
-    document.getElementById('cal-day-head').innerHTML = head;
+    const headEl = document.getElementById('cal-day-head');
+    if (headEl) {
+      if (showTechHeader && daySiglas.length) {
+        let head = '<div class="day-gutter"></div>';
+        daySiglas.forEach(s => {
+          head += `<div class="day-tech-col">
+            <div class="dtc-sig" style="color:${colorOf(s)}">${s}</div>
+            <div class="dtc-name">${s}</div>
+          </div>`;
+        });
+        headEl.innerHTML = head;
+        headEl.style.display = 'flex';
+      } else {
+        headEl.innerHTML = '';
+        headEl.style.display = 'none';
+      }
+    }
 
     // Grid
     let lbls = '';
-    for (let h = H_S; h <= H_E; h++)
-      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${h < H_E ? hm(h, 0) : ''}</div>`;
+    for (let h = H_S; h < H_E; h++)
+      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${hm(h, 0)}</div>`;
 
     let cols = '';
     daySiglas.forEach(s => {
-      const colItems = items.filter(i => i.sigla === s);
+      const colItems = s === 'all' ? items : items.filter(i => i.sigla === s);
       let lines = '';
       for (let h = 0; h < nH; h++) {
         lines += `<div class="h-line" style="top:${h * H_PX}px"></div>
         <div class="hh-line" style="top:${h * H_PX + H_PX * .5}px"></div>`;
       }
       let blocks = '';
-      colItems.forEach(iv => {
+      layoutItems(colItems).forEach(iv => {
         const top = ((iv.sh - H_S) + iv.sm / 60) * H_PX + 2;
         const ht = Math.max((iv.dur / 60) * H_PX - 4, 24);
         const endMin = iv.sh * 60 + iv.sm + iv.dur;
         const isSel = selectedItem?.exchange_item_id === iv.exchange_item_id;
-        blocks += `<div class="day-iv${isSel ? ' sel' : ''}" style="color:${iv.color};border-color:${iv.color};top:${top}px;height:${ht}px"
-          onclick="Calendar._select(${JSON.stringify(JSON.stringify(iv._raw))})">
-          <div class="div-time">${hm(iv.sh, iv.sm)} – ${hm(Math.floor(endMin/60), endMin%60)}</div>
-          <div class="div-client">${iv.client}</div>
-          ${ht > 50 ? `<div class="div-tipo">${iv.tipo}</div>` : ''}
-        </div>`;
+        const pct = 100 / iv._numCols;
+        const lPct = iv._col * pct;
+        const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
+        const innerHtml = ht < 30
+          ? `<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="opacity:.75;font-variant-numeric:tabular-nums">${timeStr}</span> <span style="font-weight:800;color:var(--text-1)">${iv.client}</span></div>`
+          : ht < 52
+          ? `<div class="div-time">${timeStr}</div><div class="div-client" style="font-size:11px">${iv.client}${iv.altro ? `<span class="div-tipo" style="display:inline;margin-left:5px;font-weight:400"> · ${iv.altro}</span>` : ''}</div>`
+          : `<div class="div-time">${timeStr}</div><div class="div-client">${iv.client}</div>${iv.altro ? `<div class="div-tipo" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 68 && iv.tipo ? `<div class="div-tipo">${iv.tipo}</div>` : '')}`;
+        const padStyle = ht < 30 ? 'padding:3px 6px' : ht < 52 ? 'padding:5px 8px' : '';
+        blocks += `<div class="day-iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
+          onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}</div>`;
       });
       let nowLine = '';
       const n = new Date(), h = n.getHours(), m = n.getMinutes();
       if (sameD(currentDay, today) && h >= H_S && h < H_E)
         nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
-      cols += `<div class="day-col" style="height:${tot}px">${lines}${blocks}${nowLine}</div>`;
+      cols += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(currentDay)}')">${lines}${blocks}${nowLine}</div>`;
     });
 
     const inner = document.getElementById('cal-day-inner');
@@ -359,7 +505,7 @@ const Calendar = (() => {
       let pills = '';
       dayItems.slice(0, MAX_PILLS).forEach(iv => {
         pills += `<div class="mth-pill" style="color:${iv.color}"
-          onclick="event.stopPropagation();Calendar._select(${JSON.stringify(JSON.stringify(iv._raw))})">
+          onclick="event.stopPropagation();Calendar._select(${escHtml(JSON.stringify(iv._raw))})">
           <div class="mth-pill-txt">${iv.client}</div>
         </div>`;
       });
@@ -390,50 +536,7 @@ const Calendar = (() => {
     if (empty) empty.style.display = 'none';
     if (!fill) return;
     fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
-
-    const start = parseISO(item.start_dt);
-    const end = parseISO(item.end_dt);
-    const dur = end && start ? Math.round((end - start) / 60000) : 0;
-    const color = colorOf(item.nome_tecnico);
-    const startStr = start ? `${hm(start.getHours(), start.getMinutes())}` : '—';
-    const endStr = end ? `${hm(end.getHours(), end.getMinutes())}` : '';
-    const dateStr = start ? `${DOW[start.getDay()]} ${start.getDate()} ${MONTHS[start.getMonth()]} ${start.getFullYear()}` : '—';
-
-    fill.innerHTML = `
-      <div class="detail-head">
-        <div class="dh-eye">Intervento</div>
-        <div class="dh-client">${item.ragione_sociale || '—'}</div>
-        <div class="badge-row">
-          ${item.descrizione ? `<span class="badge b-gray">${item.descrizione}</span>` : ''}
-          ${item.tipo_tariffa ? `<span class="badge b-purple">${item.tipo_tariffa}</span>` : ''}
-          ${dur ? `<span class="badge b-gray">${minHM(dur)}</span>` : ''}
-        </div>
-      </div>
-      <div class="detail-body fade-up">
-        ${item.nome_tecnico ? `<div class="df">
-          <div class="df-lbl">Tecnico</div>
-          <div class="df-val"><div class="tech-pill"><div class="pill-av" style="background:${color};color:#111">${item.nome_tecnico}</div>${item.nome_tecnico}</div></div>
-        </div>` : ''}
-        <div class="df"><div class="df-lbl">Data</div><div class="df-val">${dateStr}</div></div>
-        ${dur ? `<div class="df"><div class="df-lbl">Orario</div><div class="df-val mono">${startStr}${endStr ? ' → ' + endStr : ''} (${minHM(dur)})</div></div>` : ''}
-        ${item.tipo_fatturazione ? `<div class="df"><div class="df-lbl">Addebito</div><div class="df-val">${item.tipo_fatturazione}</div></div>` : ''}
-        ${item.trasferta ? `<div class="df"><div class="df-lbl">Trasferta</div><div class="df-val">${item.trasferta}</div></div>` : ''}
-        ${item.body_html ? `<div class="df"><div class="df-lbl">Note</div><div class="note-box">${item.body_html}</div></div>` : ''}
-      </div>
-      <div class="detail-ftr">
-        <div class="act-row">
-          <button class="abtn prime" onclick="App.editItem(${JSON.stringify(JSON.stringify(item))})">Modifica</button>
-          <button class="abtn" onclick="App.openPdfModal(${JSON.stringify(JSON.stringify(item))})">PDF</button>
-        </div>
-        <div class="act-row">
-          <button class="abtn" onclick="App.openEmailModal(${JSON.stringify(JSON.stringify(item))})">Email</button>
-          <button class="abtn" onclick="App.openFirmaModal(${JSON.stringify(JSON.stringify(item))})">Firma</button>
-        </div>
-        <div class="act-row">
-          <button class="abtn danger" onclick="App.confirmDelete(${JSON.stringify(JSON.stringify(item))})">Elimina</button>
-          <button class="abtn" onclick="Calendar._deselect()">Chiudi</button>
-        </div>
-      </div>`;
+    fill.innerHTML = renderInterventionDetail(item, { trasferta: true, close: true });
   }
 
   // ── Month detail: day list ────────────────────────────────────────────
@@ -456,8 +559,8 @@ const Calendar = (() => {
         <div class="day-list">
           ${items.map(iv => {
             const endMin = iv.sh * 60 + iv.sm + iv.dur;
-            return `<div class="day-list-item" style="color:${iv.color};border-color:${iv.color}"
-              onclick="App.showDetail(${JSON.stringify(JSON.stringify(iv._raw))})">
+            return `<div class="day-list-item" style="color:${iv.color}"
+              onclick="App.showDetail(${escHtml(JSON.stringify(iv._raw))})">
               <div class="dli-time">${hm(iv.sh, iv.sm)} – ${hm(Math.floor(endMin/60), endMin%60)} · ${iv.sigla}</div>
               <div class="dli-client">${iv.client}</div>
               <div class="dli-tipo">${iv.tipo || '—'}</div>
@@ -467,15 +570,29 @@ const Calendar = (() => {
       </div>
       <div class="detail-ftr">
         <button class="btn primary" style="width:100%;justify-content:center"
-          onclick="App.navigate('new')">+ Nuovo intervento</button>
+          onclick="App.navigate('new')">${GIIcon('plus', 13)}Nuovo intervento</button>
       </div>`;
   }
 
   // ── Public API ───────────────────────────────────────────────────────
 
   function renderAll() {
+    syncViewButtons();
     renderRangeLabel();
     renderSidebar();
+    const hint = document.getElementById('cal-empty-hint');
+    if (hint) {
+      const empty = !getFilteredItems().length;
+      hint.style.display = empty ? 'block' : 'none';
+      if (empty) {
+        const title = hint.querySelector('strong');
+        const body = hint.querySelector('span');
+        if (title) title.textContent = currentView === 'day' ? 'Nessun intervento in questa giornata.' : 'Nessun intervento nel periodo.';
+        if (body) body.textContent = currentView === 'day'
+          ? 'Trascina sulla griglia per scegliere subito orario e durata.'
+          : 'Usa Nuovo intervento o trascina sulla griglia del calendario.';
+      }
+    }
     if (currentView === 'week') {
       document.getElementById('cal-week-view').style.display = 'flex';
       document.getElementById('cal-day-view').style.display = 'none';
@@ -496,9 +613,15 @@ const Calendar = (() => {
 
   return {
     onNavigate() {
+      // Sync active view button
+      document.querySelectorAll('#view-calendar .vsbtn').forEach(b => b.classList.remove('on'));
+      const vMap = { week: 'Sett.', day: 'Giorno', month: 'Mese' };
+      document.querySelectorAll('#view-calendar .vsbtn').forEach(b => {
+        if (b.textContent.trim() === vMap[currentView]) b.classList.add('on');
+      });
       // Load interventions if needed then render
       const primary = App.accounts && (App.accounts.find(a => a.is_primary) || App.accounts[0]);
-      if (primary && (!App.interventions || !App.interventions.length)) {
+      if (primary) {
         App.loadInterventions().then(() => renderAll());
       } else {
         renderAll();
@@ -516,7 +639,7 @@ const Calendar = (() => {
         miniDate = new Date(miniDate.getFullYear(), miniDate.getMonth() + delta, 1);
       }
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       renderAll();
     },
 
@@ -526,18 +649,26 @@ const Calendar = (() => {
       currentDay = new Date(today);
       miniDate = new Date(today.getFullYear(), today.getMonth(), 1);
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       renderAll();
     },
 
     setView(view, btn) {
+      const order = { month: 0, week: 1, day: 2 };
+      const zoomIn = (order[view] ?? 0) >= (order[currentView] ?? 0);
       currentView = view;
-      document.querySelectorAll('#view-calendar .vsbtn').forEach(b => b.classList.remove('on'));
-      if (btn) btn.classList.add('on');
+      syncViewButtons();
       if (view === 'day' && !currentDay) currentDay = new Date(today);
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       renderAll();
+      const shown = document.getElementById(`cal-${view}-view`);
+      if (shown) {
+        const cls = zoomIn ? 'cal-zoom-in' : 'cal-zoom-out';
+        shown.classList.remove('cal-zoom-in', 'cal-zoom-out');
+        void shown.offsetWidth;
+        shown.classList.add(cls);
+      }
     },
 
     _miniNav(delta) {
@@ -555,16 +686,16 @@ const Calendar = (() => {
         miniDate = new Date(d.getFullYear(), d.getMonth(), 1);
       }
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       renderAll();
     },
 
     _dayClick(ts) {
       currentDay = new Date(ts); currentDay.setHours(0,0,0,0);
       currentView = 'day';
-      document.querySelectorAll('#view-calendar .vsbtn').forEach((b, i) => b.classList.toggle('on', i === 1));
+      syncViewButtons();
       selectedItem = null;
-      renderDetail(null);
+      App.clearDetail();
       renderAll();
     },
 
@@ -594,9 +725,35 @@ const Calendar = (() => {
       else if (currentView === 'day') renderDay();
     },
 
-    _setTech(sigla, row) {
+    _setTech(sigla) {
       techFilter = sigla;
       renderAll();
+    },
+
+    _colDown(e, col, isoDate) {
+      if (e.target.closest('.iv, .day-iv')) return;
+      e.preventDefault();
+      const rect = col.getBoundingClientRect();
+      const [sh, sm] = _yToTime(e.clientY - rect.top);
+      const ghost = document.createElement('div');
+      ghost.className = 'cal-ghost';
+      ghost.style.top    = ((sh - H_S + sm / 60) * H_PX) + 'px';
+      ghost.style.height = (H_PX / 2) + 'px';
+      col.appendChild(ghost);
+      _drag = { ghost, col, rect, isoDate, sh, sm, curH: sh, curM: sm };
+      document.addEventListener('mousemove', _onDragMove);
+      document.addEventListener('mouseup',   _onDragUp);
+    },
+
+    _confirmCreate() {
+      if (!_pendingCreate) return;
+      const { isoDate, sh, sm, eh, em } = _pendingCreate;
+      _dismissCreateModal();
+      App.openNewModal({ date: isoDate, startH: sh, startM: sm, endH: eh, endM: em });
+    },
+
+    _dismissCreate() {
+      _dismissCreateModal();
     },
 
     refresh() { renderAll(); },

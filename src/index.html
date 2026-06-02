@@ -4,14 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=34">
 </head>
 <body>
+
+<!-- Resize grips for the borderless (decorations:false) window -->
+<div class="resize-grip t"  onmousedown="WinControls.startResize('North', event)"></div>
+<div class="resize-grip b"  onmousedown="WinControls.startResize('South', event)"></div>
+<div class="resize-grip l"  onmousedown="WinControls.startResize('West', event)"></div>
+<div class="resize-grip r"  onmousedown="WinControls.startResize('East', event)"></div>
+<div class="resize-grip tl" onmousedown="WinControls.startResize('NorthWest', event)"></div>
+<div class="resize-grip tr" onmousedown="WinControls.startResize('NorthEast', event)"></div>
+<div class="resize-grip bl" onmousedown="WinControls.startResize('SouthWest', event)"></div>
+<div class="resize-grip br" onmousedown="WinControls.startResize('SouthEast', event)"></div>
 
 <!-- ═══════════════════════════════════════════════════════ ONBOARDING -->
 <div id="onboarding">
   <div class="wizard">
-    <div class="wiz-head">
+    <div class="wiz-head" data-tauri-drag-region>
       <div class="app-brand">
         <div class="brand-icon">GI</div>
         <div class="brand-name">Gestore Interventi</div>
@@ -32,53 +42,69 @@
 <!-- ═══════════════════════════════════════════════════════ MAIN APP -->
 <div id="main-app" class="app" style="display:none">
 
-  <!-- Titlebar -->
-  <div class="titlebar">
-    <div class="tb-icon">GI</div>
-    <div class="tb-title">Gestore Interventi</div>
-    <div class="tb-controls">
-      <button class="wc wc-min" title="Minimizza" onclick="App.winMin()"></button>
-      <button class="wc wc-max" title="Massimizza" onclick="App.winMax()"></button>
-      <button class="wc wc-close" title="Chiudi" onclick="App.winClose()"></button>
+  <!-- Toolbar — custom window titlebar (drag region) -->
+  <div class="toolbar" data-tauri-drag-region>
+    <div class="toolbar-left">
+      <button class="tbtn accent" onclick="App.navigate('new')" id="toolbar-new" title="Crea un nuovo intervento">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuovo intervento
+      </button>
     </div>
-  </div>
-
-  <!-- Menubar -->
-  <div class="menubar">
-    <button class="mi" onclick="App.navigate('calendar')">Calendario</button>
-    <button class="mi" onclick="App.navigate('interventions')">Interventi</button>
-    <button class="mi" onclick="App.navigate('search')">Ricerca</button>
-    <button class="mi" onclick="App.navigate('settings')">Impostazioni</button>
-    <div style="flex:1"></div>
-    <button class="mi" onclick="App.toggleTheme()" id="theme-btn">☾</button>
-  </div>
-
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <button class="tbtn accent" onclick="App.navigate('new')" id="toolbar-new">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Nuovo intervento
-    </button>
-    <div class="tsep"></div>
     <div class="global-search">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" placeholder="Cerca interventi… (Ctrl+K)" id="global-search-input" oninput="App.onSearchInput(this.value)">
+      <input type="text" placeholder="Cerca interventi… (Ctrl+K)" id="global-search-input"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        oninput="App.onSearchInput(this.value)"
+        onfocus="App.showSearchHistory()"
+        onblur="App.hideSearchHistory()"
+        onkeydown="if(event.key==='Enter'){App.saveSearch(this.value);App.hideSearchHistory();}">
       <span class="key">⌃K</span>
+      <div class="search-history hidden" id="search-history"></div>
     </div>
-    <div style="flex:1"></div>
-    <button class="tbtn" onclick="App.triggerSync()" id="sync-btn">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Sync
+    <div style="flex:1" data-tauri-drag-region></div>
+    <div class="sync-cluster">
+      <button class="tbtn" onclick="App.triggerSync()" id="sync-btn" title="Sincronizza con Exchange">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Sync
+      </button>
+      <span class="sync-feedback" id="sync-feedback" aria-live="polite"></span>
+    </div>
+    <button class="tbtn icon-only" onclick="App.navigate('settings')" id="settings-btn" title="Impostazioni" aria-label="Impostazioni">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
+    <div class="win-controls">
+      <button class="win-btn" id="win-min" onclick="WinControls.minimize()" title="Riduci a icona" aria-label="Riduci a icona">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="2" y1="6" x2="10" y2="6"/></svg>
+      </button>
+      <button class="win-btn" id="win-max" onclick="WinControls.toggleMaximize()" title="Ingrandisci" aria-label="Ingrandisci">
+        <svg id="win-max-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1"/></svg>
+      </button>
+      <button class="win-btn close" id="win-close" onclick="WinControls.close()" title="Chiudi" aria-label="Chiudi">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5"/><line x1="9.5" y1="2.5" x2="2.5" y2="9.5"/></svg>
+      </button>
+    </div>
   </div>
 
   <!-- Workspace -->
   <div class="workspace" id="workspace">
 
     <div class="sidebar">
-      <div class="sb-section">
-        <div class="sb-lbl">Account</div>
-        <div id="sidebar-accounts" style="font-size:12px;color:var(--text-2)">Caricamento…</div>
+      <div class="sidebar-scroll">
+        <div class="sb-section">
+          <div id="sidebar-accounts" style="font-size:12px;color:var(--text-2)">Caricamento…</div>
+        </div>
+      </div>
+      <div class="side-nav">
+        <div class="nav-seg" role="tablist" aria-label="Vista">
+          <button class="nav-seg-btn" data-nav="calendar" role="tab" onclick="App.navigate('calendar')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+            Calendario
+          </button>
+          <button class="nav-seg-btn" data-nav="interventions" role="tab" onclick="App.navigate('interventions')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Interventi
+          </button>
+        </div>
       </div>
     </div>
 
@@ -87,15 +113,26 @@
       <div class="view" id="view-calendar">
         <!-- Calendar sub-toolbar -->
         <div class="cal-sub-toolbar">
-          <button class="navbtn" onclick="Calendar.nav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <button class="navbtn" onclick="Calendar.nav(-1)" aria-label="Periodo precedente"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
           <div class="range-lbl" id="cal-range-lbl">—</div>
-          <button class="navbtn" onclick="Calendar.nav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
-          <button class="tbtn" onclick="Calendar.goToday()">Oggi</button>
+          <button class="navbtn" onclick="Calendar.nav(1)" aria-label="Periodo successivo"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+          <button class="tbtn" onclick="Calendar.goToday()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Oggi
+          </button>
           <div class="view-sw" style="margin-left:auto">
-            <button class="vsbtn on" onclick="Calendar.setView('week',this)">Sett.</button>
-            <button class="vsbtn" onclick="Calendar.setView('day',this)">Giorno</button>
-            <button class="vsbtn" onclick="Calendar.setView('month',this)">Mese</button>
+            <button class="vsbtn on" data-cal-view="week" onclick="Calendar.setView('week',this)">Sett.</button>
+            <button class="vsbtn" data-cal-view="day" onclick="Calendar.setView('day',this)">Giorno</button>
+            <button class="vsbtn" data-cal-view="month" onclick="Calendar.setView('month',this)">Mese</button>
           </div>
+        </div>
+        <div class="cal-empty-hint" id="cal-empty-hint">
+          <strong>Nessun intervento nel periodo.</strong>
+          <span>Trascina sulla griglia per creare un intervento, oppure usa Nuovo intervento.</span>
+          <button class="empty-action" onclick="App.navigate('new')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nuovo intervento
+          </button>
         </div>
         <!-- Week view -->
         <div id="cal-week-view" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
@@ -119,98 +156,13 @@
       </div>
 
       <div class="view" id="view-interventions">
-        <div id="list-toolbar" style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+        <div id="list-toolbar" style="padding:10px 14px 6px;display:flex;gap:8px;align-items:center">
           <span style="font-size:11px;color:var(--text-3)" id="list-count">Nessun intervento</span>
         </div>
         <div id="list-container" style="overflow-y:auto;flex:1;padding-top:6px"></div>
       </div>
 
-      <div class="view" id="view-new">
-        <div style="padding:20px 24px;overflow-y:auto;flex:1">
-          <div style="font-size:16px;font-weight:800;margin-bottom:18px;letter-spacing:-.01em" id="form-title">Nuovo intervento</div>
-          <form id="intervention-form" onsubmit="return false">
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div class="fg">
-                <label class="fg-lbl">Data e ora inizio *</label>
-                <input class="fg-in" type="datetime-local" id="f-start" required>
-              </div>
-              <div class="fg">
-                <label class="fg-lbl">Durata</label>
-                <div class="slider-wrap">
-                  <input type="range" id="f-durata" min="15" max="480" step="15" value="60" oninput="App.updateDurata(this.value)">
-                  <span class="slider-val" id="f-durata-val">1h</span>
-                </div>
-                <div class="slider-labels"><span>15 min</span><span>8h</span></div>
-              </div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div class="fg">
-                <label class="fg-lbl">Tecnico (sigla) *</label>
-                <div class="fuzzy-wrap" id="fuzzy-sigla-wrap"></div>
-              </div>
-              <div class="fg">
-                <label class="fg-lbl">Cliente *</label>
-                <div class="fuzzy-wrap" id="fuzzy-cliente-wrap"></div>
-              </div>
-            </div>
-
-            <div class="fg">
-              <label class="fg-lbl">Tipo intervento</label>
-              <div class="fuzzy-wrap" id="fuzzy-tipo-wrap"></div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div class="fg">
-                <label class="fg-lbl">Tariffa</label>
-                <div class="fuzzy-wrap" id="fuzzy-tariffa-wrap"></div>
-              </div>
-              <div class="fg">
-                <label class="fg-lbl">Addebito</label>
-                <div class="fuzzy-wrap" id="fuzzy-addebito-wrap"></div>
-              </div>
-            </div>
-
-            <div class="fg">
-              <label class="fg-lbl">Trasferta</label>
-              <select class="fg-sel" id="f-trasferta">
-                <option value="">—</option>
-                <option>No</option>
-                <option>Sì</option>
-                <option>Rimborso km</option>
-              </select>
-            </div>
-
-            <div class="fg">
-              <label class="fg-lbl">Note soggetto (Altro)</label>
-              <input class="fg-in" type="text" id="f-altro" placeholder="Testo aggiuntivo nel soggetto…" oninput="App.updateSubjectPreview()">
-            </div>
-
-            <div class="fg">
-              <label class="fg-lbl">Note tecniche</label>
-              <textarea class="fg-ta" id="f-note" rows="4" placeholder="Note interne, dettagli tecnici…"></textarea>
-            </div>
-
-            <div class="fg">
-              <label class="fg-lbl">Anteprima soggetto Exchange</label>
-              <div id="subject-preview">—</div>
-            </div>
-
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <button class="btn primary" id="form-submit-btn" type="button" onclick="App.submitForm()">
-                <span id="form-submit-text">Salva intervento</span>
-                <span class="spinner" id="form-submit-spinner" style="display:none"></span>
-              </button>
-              <button class="btn" id="form-sign-btn" type="button" onclick="App.submitAndSign()" style="display:none">Firma e salva</button>
-              <button class="btn" id="form-cancel-btn" type="button" onclick="App.cancelForm()">Annulla</button>
-            </div>
-
-          </form>
-        </div>
-      </div>
-
-      <div class="view" id="view-search" style="flex-direction:row">
+<div class="view" id="view-search" style="flex-direction:row">
 
         <!-- Filter sidebar -->
         <div id="srch-sidebar">
@@ -228,6 +180,19 @@
               <button class="srch-pill srch-date-pill" data-preset="settimana" onclick="Search.setDatePreset('settimana')">Questa settimana</button>
               <button class="srch-pill srch-date-pill" data-preset="mese"      onclick="Search.setDatePreset('mese')">Questo mese</button>
               <button class="srch-pill srch-date-pill" data-preset="3mesi"     onclick="Search.setDatePreset('3mesi')">Ultimi 3 mesi</button>
+              <button class="srch-pill srch-date-pill" data-preset="custom"    onclick="Search.setDatePreset('custom')">Personalizzato…</button>
+            </div>
+            <div id="srch-date-custom" style="display:none;margin-top:8px;flex-direction:column;gap:6px">
+              <div>
+                <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Dal</div>
+                <input class="fg-in" type="date" id="srch-date-from" style="font-size:11px"
+                  oninput="Search.setCustomRange(this.value, document.getElementById('srch-date-to').value)">
+              </div>
+              <div>
+                <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Al</div>
+                <input class="fg-in" type="date" id="srch-date-to" style="font-size:11px"
+                  oninput="Search.setCustomRange(document.getElementById('srch-date-from').value, this.value)">
+              </div>
             </div>
           </div>
 
@@ -241,30 +206,20 @@
             <div id="srch-tipo-pills" style="display:flex;flex-direction:column;gap:3px;margin-top:4px"></div>
           </div>
 
-          <button class="btn" onclick="Search.reset()" style="margin-top:auto;font-size:11px;width:100%">Azzera filtri</button>
+          <button class="btn sm" onclick="Search.reset()" style="font-size:11px;width:100%;justify-content:center">Azzera filtri</button>
         </div>
 
         <!-- Results -->
         <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-          <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-3)" id="srch-count"></div>
+          <div style="padding:10px 14px 6px;font-size:11px;color:var(--text-3)" id="srch-count"></div>
           <div id="srch-list" style="flex:1;overflow-y:auto;padding-top:6px"></div>
         </div>
 
       </div>
 
-      <div class="view" id="view-settings" style="flex-direction:row">
-
-        <!-- Left nav -->
-        <div id="st-nav" style="width:180px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto"></div>
-
-        <!-- Content -->
-        <div id="st-body" style="flex:1;overflow-y:auto;padding:20px 24px;max-width:680px"></div>
-
-      </div>
-
     </div>
 
-    <div class="detail-panel" id="detail-panel" style="display:flex;flex-direction:column;overflow:hidden">
+    <div class="detail-panel" id="detail-panel">
       <div class="empty-detail" id="detail-empty">
         <div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
         <div class="empty-txt">Seleziona un intervento<br>per vedere i dettagli</div>
@@ -294,7 +249,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         <span class="modal-title">Firma cliente e allega al rapporto</span>
       </span>
-      <button class="modal-close" onclick="App.closeModal('firma')">×</button>
+        <button class="modal-close" onclick="App.closeModal('firma')" aria-label="Chiudi firma cliente">×</button>
     </div>
     <div class="modal-body">
       <div class="sig-info">
@@ -350,12 +305,13 @@
   <div class="modal" style="width:560px">
     <div class="modal-head">
       <span class="modal-title">Invia report via email</span>
-      <button class="modal-close" onclick="App.closeModal('email')">×</button>
+      <button class="modal-close" onclick="App.closeModal('email')" aria-label="Chiudi invio email">×</button>
     </div>
     <div class="modal-body" id="modal-email-body"></div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeModal('email')">Annulla</button>
       <button class="btn primary" onclick="App.emailSend()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
         <span id="email-send-text">Invia</span>
         <span class="spinner" id="email-send-spinner" style="display:none"></span>
       </button>
@@ -367,20 +323,218 @@
   <div class="modal" style="width:460px">
     <div class="modal-head">
       <span class="modal-title">Esporta PDF</span>
-      <button class="modal-close" onclick="App.closeModal('pdf')">×</button>
+      <button class="modal-close" onclick="App.closeModal('pdf')" aria-label="Chiudi esportazione PDF">×</button>
     </div>
     <div class="modal-body" id="modal-pdf-body"></div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeModal('pdf')">Annulla</button>
-      <button class="btn primary" onclick="App.pdfExport()">Esporta PDF</button>
+      <button class="btn primary" onclick="App.pdfExport()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        Esporta PDF
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-settings">
+  <div class="modal settings-modal">
+    <div class="modal-head">
+      <span class="modal-title">Impostazioni</span>
+      <button class="modal-close" onclick="App.closeModal('settings')" aria-label="Chiudi impostazioni">×</button>
+    </div>
+    <div class="settings-shell">
+      <div id="st-nav" class="settings-nav"></div>
+      <div id="st-body" class="settings-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- New intervention modal -->
+<div class="modal-overlay hidden" id="modal-new">
+  <div class="modal new-modal">
+    <div class="modal-head">
+      <div class="new-modal-titleline">
+        <span class="modal-title" id="form-title">Nuovo intervento</span>
+        <div class="subject-preview-chip" title="Anteprima soggetto Exchange">
+          <span>Oggetto</span>
+          <div id="subject-preview">—</div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="App.closeNewModal()" aria-label="Chiudi nuovo intervento">×</button>
+    </div>
+    <div class="modal-body new-modal-body">
+      <form id="intervention-form" class="new-form" onsubmit="return false">
+
+        <div class="form-section">
+          <div class="form-section-title">Quando</div>
+          <div class="new-form-grid two">
+            <div class="fg">
+              <label class="fg-lbl">Data e ora inizio *</label>
+              <input class="fg-in" type="datetime-local" id="f-start" required>
+              <div class="fg-error" id="err-start"></div>
+            </div>
+            <div class="fg">
+              <label class="fg-lbl">Durata</label>
+              <div class="slider-wrap">
+                <input type="range" id="f-durata" min="15" max="480" step="15" value="60" oninput="App.updateDurata(this.value)">
+                <span class="slider-val" id="f-durata-val">1h</span>
+              </div>
+              <div class="slider-labels"><span>15 min</span><span>8h</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">Intervento</div>
+          <div class="new-form-grid intervention-grid">
+            <div class="fg">
+              <label class="fg-lbl">Cliente *</label>
+              <div class="fuzzy-wrap" id="fuzzy-cliente-wrap"></div>
+              <div class="fg-error" id="err-cliente"></div>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Luogo</label>
+              <div class="fuzzy-wrap" id="fuzzy-luogo-wrap"></div>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Tipo intervento</label>
+              <div class="fuzzy-wrap" id="fuzzy-tipo-wrap"></div>
+            </div>
+
+            <div class="fg">
+              <label class="fg-lbl">Dettaglio breve nel soggetto</label>
+              <input class="fg-in" type="text" id="f-altro" name="gi-subject-detail" placeholder="Es. sostituzione UPS, sopralluogo, urgenza…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="App.updateSubjectPreview()">
+              <div class="fg-hint">Compare nel soggetto Exchange.</div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="form-section">
+          <div class="form-section-title">Note Outlook</div>
+          <div class="fg">
+            <label class="fg-lbl">Note intervento (corpo Outlook)</label>
+            <textarea class="fg-ta note-main" id="f-note" rows="4" placeholder="Descrizione dell'attività, dettagli tecnici, esito, materiale usato…"></textarea>
+            <div class="fg-hint">Queste note finiscono nel corpo dell'appuntamento Outlook, non nel soggetto.</div>
+          </div>
+        </div>
+
+        <details class="fg-extra">
+          <summary>Campi aggiuntivi</summary>
+          <div class="fg-extra-body">
+            <div class="fg">
+              <label class="fg-lbl">Tecnico (automatico)</label>
+              <div class="fuzzy-wrap" id="fuzzy-sigla-wrap"></div>
+              <div class="fg-hint">Ultima sigla o default.</div>
+            </div>
+            <div class="new-form-grid two">
+              <div class="fg">
+                <label class="fg-lbl">Tariffa</label>
+                <div class="fuzzy-wrap" id="fuzzy-tariffa-wrap"></div>
+              </div>
+              <div class="fg">
+                <label class="fg-lbl">Addebito</label>
+                <div class="fuzzy-wrap" id="fuzzy-addebito-wrap"></div>
+              </div>
+            </div>
+            <div class="fg">
+              <label class="fg-lbl">Trasferta</label>
+              <select class="fg-sel" id="f-trasferta">
+                <option value="">—</option>
+                <option>No</option>
+                <option>Sì</option>
+                <option>Rimborso km</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <div class="new-modal-footer">
+          <button class="btn primary" id="form-submit-btn" type="button" onclick="App.submitForm()">
+            <span id="form-submit-text">Salva intervento</span>
+            <span class="spinner" id="form-submit-spinner" style="display:none"></span>
+          </button>
+          <button class="btn" id="form-sign-btn" type="button" onclick="App.submitAndSign()" style="display:none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+            Firma e salva
+          </button>
+          <button class="btn" id="form-cancel-btn" type="button" onclick="App.closeNewModal()">Annulla</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Calendar quick-create confirm modal -->
+<div id="cal-create-modal" class="hidden" style="position:fixed;z-index:500">
+  <div class="cal-cm-card">
+    <div class="cal-cm-hdr">
+      <span style="font-size:12px;font-weight:700;color:var(--text-1)">Nuovo intervento</span>
+      <button class="modal-close" style="font-size:16px;line-height:1" onclick="Calendar._dismissCreate()" aria-label="Chiudi creazione rapida">×</button>
+    </div>
+    <div id="cal-cm-info" style="padding:8px 12px 4px"></div>
+    <div style="display:flex;gap:6px;padding:8px 12px 12px">
+      <button class="btn primary" style="flex:1;justify-content:center" onclick="Calendar._confirmCreate()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Crea
+      </button>
+      <button class="btn" onclick="Calendar._dismissCreate()">Annulla</button>
+    </div>
+  </div>
+</div>
+
+<!-- Event context menu -->
+<div id="ctx-menu" class="hidden ctx-menu">
+  <div class="ctx-item" onclick="App._trasfertaFromCtx('before')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><line x1="18" y1="12" x2="6" y2="12"/></svg>
+    Aggiungi trasferta prima
+  </div>
+  <div class="ctx-item" onclick="App._trasfertaFromCtx('after')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 7 18 12 13 17"/><line x1="6" y1="12" x2="18" y2="12"/></svg>
+    Aggiungi trasferta dopo
+  </div>
+</div>
+
+<!-- Trasferta modal -->
+<div class="modal-overlay hidden" id="modal-trasferta">
+  <div class="modal" style="width:420px">
+    <div class="modal-head">
+      <span class="modal-title" id="trasferta-title">Trasferta</span>
+      <button class="modal-close" onclick="App.closeModal('trasferta')" aria-label="Chiudi trasferta">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="trasferta-ref" class="trasferta-ref"></div>
+      <div class="fg">
+        <label class="fg-lbl">Luogo</label>
+        <input class="fg-in" type="text" id="trasferta-luogo" list="trasferta-luogo-list" placeholder="Luogo della trasferta…" autocomplete="off">
+        <datalist id="trasferta-luogo-list"></datalist>
+      </div>
+      <div class="fg">
+        <label class="fg-lbl">Durata</label>
+        <div class="slider-wrap">
+          <input type="range" id="trasferta-durata" min="15" max="240" step="15" value="30" oninput="App._updateTrasfertaDurata(this.value)">
+          <span class="slider-val" id="trasferta-durata-val">30 min</span>
+        </div>
+        <div class="slider-labels"><span>15 min</span><span>4h</span></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="App.closeModal('trasferta')">Annulla</button>
+      <button class="btn primary" id="trasferta-confirm-btn" onclick="App._confirmTrasferta()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M12 19h1a5 5 0 0 0 5-5V8"/><path d="M6 16v-1a5 5 0 0 1 5-5h1"/></svg>
+        Crea trasferta
+      </button>
     </div>
   </div>
 </div>
 
 <div id="toast-container"></div>
-<script src="search.js"></script>
-<script src="settings.js"></script>
-<script src="calendar.js"></script>
-<script src="app.js"></script>
+<script src="search.js?v=7"></script>
+<script src="settings.js?v=7"></script>
+<script src="calendar.js?v=20"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

@@ -6,6 +6,8 @@ const Search = {
   _tech: null,
   _tipo: null,
   _datePreset: null,
+  _dateFrom: null,
+  _dateTo: null,
 
   // Called by App.navigate('search')
   onNavigate() {
@@ -26,6 +28,15 @@ const Search = {
     document.querySelectorAll('.srch-date-pill').forEach(b =>
       b.classList.toggle('on', b.dataset.preset === this._datePreset)
     );
+    const customPanel = document.getElementById('srch-date-custom');
+    if (customPanel) customPanel.style.display = this._datePreset === 'custom' ? 'flex' : 'none';
+    if (this._datePreset !== 'custom') { this._dateFrom = null; this._dateTo = null; }
+    this._render();
+  },
+
+  setCustomRange(from, to) {
+    this._dateFrom = from || null;
+    this._dateTo   = to   || null;
     this._render();
   },
 
@@ -56,10 +67,18 @@ const Search = {
     this._tech = null;
     this._tipo = null;
     this._datePreset = null;
+    this._dateFrom = null;
+    this._dateTo = null;
     const globalInp = document.getElementById('global-search-input');
     if (globalInp) globalInp.value = '';
     const clientInp = document.getElementById('srch-client-input');
     if (clientInp) clientInp.value = '';
+    const fromInp = document.getElementById('srch-date-from');
+    if (fromInp) fromInp.value = '';
+    const toInp = document.getElementById('srch-date-to');
+    if (toInp) toInp.value = '';
+    const customPanel = document.getElementById('srch-date-custom');
+    if (customPanel) customPanel.style.display = 'none';
     this._populateFilters();
     this._render();
   },
@@ -119,6 +138,16 @@ const Search = {
         return start.getMonth() === now.getMonth() && start.getFullYear() === now.getFullYear();
       case '3mesi':
         return start >= new Date(now.getFullYear(), now.getMonth() - 3, 1);
+      case 'custom': {
+        if (!this._dateFrom && !this._dateTo) return true;
+        if (this._dateFrom && start < new Date(this._dateFrom)) return false;
+        if (this._dateTo) {
+          const toEnd = new Date(this._dateTo);
+          toEnd.setDate(toEnd.getDate() + 1);
+          if (start >= toEnd) return false;
+        }
+        return true;
+      }
       default:
         return true;
     }
@@ -174,7 +203,7 @@ const Search = {
       return;
     }
 
-    const colors = ['#6da8ee','#72d895','#f0bd71','#a99af4','#e99b8b','#6ed7d1','#ef7d82','#f8c76a'];
+    const colors = ['var(--cat-1)','var(--cat-2)','var(--cat-3)','var(--cat-4)','var(--cat-5)','var(--cat-6)','var(--cat-7)','var(--cat-8)'];
     const colorOf = s => { let h = 0; for (const c of (s || '')) h = (h * 31 + c.charCodeAt(0)) & 0xffff; return colors[h % colors.length]; };
 
     list.innerHTML = items.map(item => {
@@ -183,11 +212,11 @@ const Search = {
       const tipo    = this._hl(item.descrizione || '', q);
       const altro   = item.altro ? this._hl(item.altro, q) : '';
       const dt      = item.start_dt ? fmtDT(item.start_dt) : '—';
-      return `<div class="iv-card" onclick="App.showDetail(${JSON.stringify(JSON.stringify(item))})">
+      return `<div class="iv-card" tabindex="0" role="button" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();App.showDetail(${escHtml(JSON.stringify(item))})}" onclick="App.showDetail(${escHtml(JSON.stringify(item))})">
         <div class="iv-bar" style="background:${color}"></div>
         <div class="iv-body">
           <div class="iv-top">
-            <div class="iv-sigla" style="background:${color}22;color:${color}">${item.nome_tecnico || '—'}</div>
+            <div class="iv-sigla" style="background:color-mix(in oklch, ${color} 18%, transparent);color:${color}">${item.nome_tecnico || '—'}</div>
             <div class="iv-cliente">${cliente}</div>
           </div>
           <div class="iv-meta">
