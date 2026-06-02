@@ -476,6 +476,7 @@ function renderInterventionDetail(item, opts = {}) {
     chip(item.tipo_fatturazione),
     chip(item.trasferta, 'travel')
   ].filter(Boolean).join('');
+  const noteHtml = sanitizeNote(item.body_html);
 
   return `
     <div class="detail-head">
@@ -493,7 +494,7 @@ function renderInterventionDetail(item, opts = {}) {
       ${metaHtml ? `<div class="detail-meta">${metaHtml}</div>` : ''}
       <div class="detail-note">
         <div class="df-lbl">Note</div>
-        ${item.body_html ? `<div class="note-box">${item.body_html}</div>` : `<div class="detail-note-empty">Nessuna nota</div>`}
+        ${noteHtml ? `<div class="note-box">${noteHtml}</div>` : `<div class="detail-note-empty">Nessuna nota</div>`}
       </div>
     </div>
     <div class="detail-ftr">
