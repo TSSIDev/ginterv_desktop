@@ -761,7 +761,7 @@ const App = {
     document.getElementById('f-durata').value = 60;
     this.updateDurata(60);
     document.getElementById('f-altro').value = '';
-    document.getElementById('f-note').value = '';
+    this.setNoteHtml('');
     document.getElementById('f-trasferta').value = '';
     Object.values(this._fuzzy).forEach(f => f?.setValue(''));
     // Auto-fill sigla from last used or primary account
@@ -795,7 +795,7 @@ const App = {
     this._fuzzy.tariffa?.setValue(item.tipo_tariffa || '');
     this._fuzzy.addebito?.setValue(item.tipo_fatturazione || '');
     document.getElementById('f-altro').value = item.altro || '';
-    document.getElementById('f-note').value = item.body_html?.replace(/<[^>]+>/g,'') || '';
+    this.setNoteHtml(sanitizeNote(item.body_html));
     document.getElementById('f-trasferta').value = item.trasferta || '';
     this.updateSubjectPreview();
   },
@@ -880,7 +880,7 @@ const App = {
       tipo_fatturazione: this._fuzzy.addebito?.getValue() || null,
       trasferta: document.getElementById('f-trasferta').value || null,
       altro: document.getElementById('f-altro').value || null,
-      body_html: document.getElementById('f-note').value || null,
+      body_html: sanitizeNote(this.getNoteHtml()) || null,
     };
   },
 
