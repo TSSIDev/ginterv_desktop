@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
 
@@ -416,7 +416,14 @@
           <div class="form-section-title">Note Outlook</div>
           <div class="fg">
             <label class="fg-lbl">Note intervento (corpo Outlook)</label>
-            <textarea class="fg-ta note-main" id="f-note" rows="4" placeholder="Descrizione dell'attività, dettagli tecnici, esito, materiale usato…"></textarea>
+            <div class="note-editor">
+              <div class="note-toolbar" role="toolbar" aria-label="Formattazione note">
+                <button type="button" class="note-tool" data-cmd="bold" title="Grassetto (Ctrl+B)" aria-label="Grassetto"><b>B</b></button>
+                <button type="button" class="note-tool" data-cmd="italic" title="Corsivo (Ctrl+I)" aria-label="Corsivo"><i>I</i></button>
+                <button type="button" class="note-tool" data-cmd="underline" title="Sottolineato (Ctrl+U)" aria-label="Sottolineato"><u>U</u></button>
+              </div>
+              <div class="fg-ta note-main" id="f-note" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Descrizione dell'attività, dettagli tecnici, esito, materiale usato…"></div>
+            </div>
             <div class="fg-hint">Queste note finiscono nel corpo dell'appuntamento Outlook, non nel soggetto.</div>
           </div>
         </div>
