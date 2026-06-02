@@ -440,6 +440,19 @@ const Wizard = {
   },
 };
 
+// Sanitize untrusted note/body HTML (from Exchange/Outlook or pasted) before it
+// touches the live DOM. DOMPurify defaults preserve rich formatting (lists,
+// tables, inline styles) and strip script/handlers/js: URLs. We additionally
+// drop media: cid: images never resolve and external URLs are tracking/privacy.
+function sanitizeNote(html) {
+  if (!html) return '';
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['img', 'video', 'audio'],
+    FORBID_ATTR: ['srcset']
+  });
+}
+
 // Shared intervention-detail markup. Used by App.showDetail (list/search) and
 // Calendar.renderDetail (calendar) so the panel stays identical from every entry point.
 // opts.trasferta → add "Trasferta" action; opts.close → add "Chiudi" action.
