@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
 
@@ -64,7 +64,10 @@
     <div style="flex:1" data-tauri-drag-region></div>
     <div class="sync-cluster">
       <button class="tbtn" onclick="App.triggerSync()" id="sync-btn" title="Sincronizza con Exchange">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        <span class="sync-ico">
+          <svg class="ico-sync" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <svg class="ico-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </span>
         Sync
       </button>
       <span class="sync-feedback" id="sync-feedback" aria-live="polite"></span>
@@ -553,6 +556,6 @@
 <script src="search.js?v=8"></script>
 <script src="settings.js?v=12"></script>
 <script src="calendar.js?v=24"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

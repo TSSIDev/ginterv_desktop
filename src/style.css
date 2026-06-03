@@ -203,8 +203,17 @@ textarea:focus-visible,
 .sync-feedback.show { opacity: 1; transform: translateY(0) scale(1); }
 .sync-feedback.error { color: var(--red); }
 #sync-btn.syncing { opacity: .72; }
-#sync-btn.syncing svg { animation: sync-spin .85s linear infinite; }
+#sync-btn .sync-ico { position: relative; display: inline-flex; width: 13px; height: 13px; }
+#sync-btn .sync-ico svg { position: absolute; inset: 0; transition: opacity .18s var(--ease), transform .18s var(--ease); }
+#sync-btn.syncing .ico-sync { animation: sync-spin .85s linear infinite; }
+/* Idle: arrows shown, check tucked away */
+#sync-btn .ico-check { opacity: 0; transform: scale(.4); color: var(--green); }
+/* Success: arrows fade out, green check pops in, button text greens briefly */
+#sync-btn.ok { color: var(--green); }
+#sync-btn.ok .ico-sync { opacity: 0; transform: scale(.4); }
+#sync-btn.ok .ico-check { opacity: 1; transform: scale(1); animation: sync-pop .38s var(--ease); }
 @keyframes sync-spin { to { transform: rotate(360deg); } }
+@keyframes sync-pop { 0% { transform: scale(.4); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
 .navbtn {
   width: 28px; height: 28px; border-radius: 5px; border: none;
   background: transparent; color: var(--text-2); cursor: pointer;

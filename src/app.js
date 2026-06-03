@@ -552,6 +552,7 @@ const App = {
   _firmaPenWidth: 2,
   _firmaHasDraw: false,
   _syncFeedbackTimer: null,
+  _syncOkTimer: null,
   _lastSyncAt: 0,
   _lastSyncCount: null,
   _syncing: false,
@@ -1159,7 +1160,11 @@ const App = {
     try {
       await invoke('trigger_sync', { email: primary.email });
       this._lastSyncAt = Date.now();
-      this.showSyncFeedback('Aggiornato');
+      // Success microinteraction: spinner → green check pop → back to normal.
+      btn?.classList.remove('syncing');
+      btn?.classList.add('ok');
+      clearTimeout(this._syncOkTimer);
+      this._syncOkTimer = setTimeout(() => btn?.classList.remove('ok'), 1200);
     } catch(e) {
       this.showSyncFeedback('Errore sync', 'error');
       $('sb-sync-text').textContent = 'Errore sync';
