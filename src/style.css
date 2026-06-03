@@ -69,8 +69,8 @@ body.theme-light {
   --sh-3: 0 24px 60px oklch(40% 0.05 270 / .20);
   --sh-chrome: none;
   --overlay: oklch(40% 0.03 270 / .28);
-  --chrome-bg: oklch(95% 0.008 270 / .62);
-  --chrome-border: oklch(84% 0.013 270 / .65);
+  --chrome-bg: oklch(95% 0.008 270 / .60);
+  --chrome-border: oklch(84% 0.013 270 / .62);
 }
 
 html, body {
@@ -1217,10 +1217,17 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   width: min(860px, 94vw);
   height: min(560px, 88vh);
   max-height: 88vh;
+  /* Mini app window: frosted chrome glass, top bar + left column fused.
+     Behind the modal sits the dimmed app, so backdrop-filter is a real frost. */
+  background: var(--chrome-bg);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: 1px solid var(--chrome-border);
   transition: background .22s var(--ease), border-color .22s var(--ease), color .22s var(--ease);
 }
 .settings-modal .modal-head {
   padding: 15px 22px 13px;
+  background: transparent; /* part of the chrome L (fused with nav) */
 }
 .settings-shell {
   display: grid;
@@ -1228,8 +1235,7 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background: var(--bg-base);
-  transition: background .22s var(--ease);
+  background: transparent;
 }
 .settings-nav {
   display: flex;
@@ -1237,14 +1243,16 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   padding: 14px 10px;
   gap: 3px;
   overflow-y: auto;
-  background: var(--bg-panel);
+  background: transparent; /* glass, fused with the top bar */
   transition: background .22s var(--ease);
 }
 .settings-body {
   flex: 1;
   overflow-y: auto;
   padding: 24px 30px;
-  background: var(--bg-base);
+  /* Opaque content panel sitting in the glass frame, like the app's main view. */
+  background: var(--bg-surface);
+  border-top-left-radius: var(--r-lg);
   transition: background .22s var(--ease), color .22s var(--ease);
 }
 .st-nav-btn { display: block; width: 100%; text-align: left; padding: 9px 12px; font-size: 12px; border-radius: var(--r-md); border: none; background: none; color: var(--text-2); cursor: pointer; transition: background .15s var(--ease), color .15s var(--ease); white-space: nowrap; }
@@ -1296,7 +1304,7 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  background: var(--bg-base);
+  background: var(--bg-elev);
   color: var(--text-2);
   cursor: pointer;
   transition: border-color .22s var(--ease), background .22s var(--ease), box-shadow .22s var(--ease), color .22s var(--ease);
@@ -1315,8 +1323,8 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   left: 3px;
   width: calc(50% - 4px);
   border-radius: calc(var(--r-md) - 3px);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: var(--accent-solid);
+  border: none;
   box-shadow: var(--sh-1);
   transition: transform .24s var(--ease), background .22s var(--ease), border-color .22s var(--ease), box-shadow .22s var(--ease);
 }
@@ -1339,12 +1347,35 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
 }
 .st-theme-switch:not(.light) .st-theme-dark,
 .st-theme-switch.light .st-theme-light {
-  color: var(--text-1);
+  color: var(--accent-text);
 }
-.st-dd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 14px; }
-.st-dd-item { display: flex; flex-direction: column; }
-.st-dd-lbl { font-size: 11px; font-weight: 700; color: var(--text-2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
-.st-dd-ta { resize: vertical; font-size: 12px; font-family: inherit; line-height: 1.6; }
+/* Dropdown lists editor — pill selector + single focused editor */
+.dd-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 18px; }
+.dd-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; font-size: 12px; font-weight: 600;
+  color: var(--text-2); background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.dd-tab:hover { color: var(--text-1); border-color: var(--border-2); }
+.dd-tab.on { background: var(--accent-solid); color: var(--accent-text); border-color: transparent; font-weight: 650; }
+.dd-tab-n {
+  font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  min-width: 17px; height: 16px; padding: 0 4px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-hover); color: var(--text-3);
+}
+.dd-tab.on .dd-tab-n { background: color-mix(in oklch, var(--accent-text) 22%, transparent); color: var(--accent-text); }
+.dd-editor { max-width: 560px; }
+.dd-editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.dd-editor-title { font-size: 13px; font-weight: 700; color: var(--text-1); letter-spacing: -.01em; }
+.dd-editor-hint { font-size: 11px; color: var(--text-3); margin-top: 2px; line-height: 1.4; }
+.dd-editor-count { font-size: 11px; color: var(--text-3); white-space: nowrap; flex-shrink: 0; }
+.dd-editor-count b { font-size: 13px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums; }
+.dd-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.dd-sort { margin-right: auto; }
+.st-dd-ta { resize: vertical; width: 100%; font-size: 12px; font-family: inherit; line-height: 1.6; }
 
 @media (max-width: 720px) {
   .settings-modal { width: 96vw; height: 90vh; }
@@ -1354,6 +1385,6 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
     overflow-x: auto;
   }
   .st-nav-btn { width: auto; flex-shrink: 0; }
-  .settings-body { padding: 16px 18px; }
+  .settings-body { padding: 16px 18px; border-top-left-radius: 0; }
   .st-setting-row { grid-template-columns: 1fr; align-items: start; }
 }

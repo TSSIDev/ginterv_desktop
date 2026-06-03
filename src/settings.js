@@ -477,38 +477,102 @@ const Settings = {
 
   // ── Dropdown data ─────────────────────────────────────────────────────
 
-  _renderDropdown(body) {
-    const dd = this._dropdownData;
-    const lists = [
-      { key: 'sigla',            label: 'Sigle tecnici' },
-      { key: 'clienti',         label: 'Clienti' },
-      { key: 'luoghi',          label: 'Luoghi' },
-      { key: 'tipo_intervento', label: 'Tipo intervento' },
-      { key: 'tipo_tariffa',    label: 'Tariffa' },
-      { key: 'tipo_addebito',   label: 'Addebito' },
-      { key: 'durata',          label: 'Durata' },
+  _ddMeta() {
+    return [
+      { key: 'sigla',           label: 'Sigle tecnici',  hint: 'Proposte nel campo Tecnico del form intervento.' },
+      { key: 'clienti',         label: 'Clienti',        hint: 'Ragioni sociali proposte nel campo Cliente.' },
+      { key: 'luoghi',          label: 'Luoghi',         hint: 'Località proposte nel campo Luogo.' },
+      { key: 'tipo_intervento', label: 'Tipo intervento',hint: 'Voci proposte nel campo Descrizione.' },
+      { key: 'tipo_tariffa',    label: 'Tariffa',        hint: 'Voci proposte nel campo Tariffa.' },
+      { key: 'tipo_addebito',   label: 'Addebito',       hint: 'Voci proposte nel campo Addebito.' },
+      { key: 'durata',          label: 'Durata',         hint: 'Durate rapide proposte, in minuti.' },
     ];
+  },
+
+  _renderDropdown(body) {
+    const meta = this._ddMeta();
+    if (!meta.some(m => m.key === this._ddActive)) this._ddActive = meta[0].key;
+    const dd = this._dropdownData || {};
+    const active = meta.find(m => m.key === this._ddActive);
+    const items = dd[active.key] || [];
+
+    const pills = meta.map(m => `
+      <button class="dd-tab${m.key === this._ddActive ? ' on' : ''}" type="button"
+        onclick="Settings._ddSelect('${m.key}')">
+        ${m.label}<span class="dd-tab-n">${(dd[m.key] || []).length}</span>
+      </button>`).join('');
 
     body.innerHTML = `
-      <div class="st-section-hdr">Dati dropdown</div>
-      <div class="st-section-desc">Un elemento per riga. Clicca Salva per aggiornare la lista.</div>
-      <div class="st-dd-grid">
-        ${lists.map(l => `
-          <div class="st-dd-item">
-            <div class="st-dd-lbl">${l.label}</div>
-            <textarea class="fg-in st-dd-ta" id="st-dd-${l.key}" rows="6" spellcheck="false">${(dd[l.key] || []).join('\n')}</textarea>
-            <button class="btn" style="margin-top:6px;width:100%;font-size:11px"
-              onclick="Settings._saveDd('${l.key}')">Salva</button>
+      <div class="st-section-hdr">Liste a tendina</div>
+      <div class="st-section-desc">Le voci proposte nei menu del form intervento. Scegli una lista e modificala, una voce per riga.</div>
+      <div class="dd-tabs">${pills}</div>
+      <div class="dd-editor">
+        <div class="dd-editor-head">
+          <div>
+            <div class="dd-editor-title">${active.label}</div>
+            <div class="dd-editor-hint">${active.hint}</div>
           </div>
-        `).join('')}
+          <div class="dd-editor-count"><b id="dd-count">${items.length}</b> voci</div>
+        </div>
+        <textarea class="fg-in st-dd-ta" id="st-dd-${active.key}" rows="9" spellcheck="false"
+          oninput="Settings._ddDirty()">${items.join('\n')}</textarea>
+        <div class="dd-editor-actions">
+          <button class="btn dd-sort" onclick="Settings._ddSort()">Ordina alfabeticamente</button>
+          <button class="btn" id="dd-revert" disabled onclick="Settings._ddRevert()">Annulla</button>
+          <button class="btn primary" id="dd-save" disabled onclick="Settings._ddSave()">Salva modifiche</button>
+        </div>
       </div>
     `;
   },
 
-  async _saveDd(key) {
-    const ta = $('st-dd-' + key);
+  _ddCurrentItems() {
+    const ta = $('st-dd-' + this._ddActive);
+    return ta ? ta.value.split('\n').map(s => s.trim()).filter(Boolean) : [];
+  },
+
+  _ddIsDirty() {
+    const saved = (this._dropdownData || {})[this._ddActive] || [];
+    const cur = this._ddCurrentItems();
+    return cur.length !== saved.length || cur.some((v, i) => v !== saved[i]);
+  },
+
+  _ddSelect(key) {
+    if (key === this._ddActive) return;
+    if (this._ddIsDirty() && !confirm('Modifiche non salvate verranno perse. Continuare?')) return;
+    this._ddActive = key;
+    this._renderDropdown($('st-body'));
+  },
+
+  _ddDirty() {
+    const cur = this._ddCurrentItems();
+    const cnt = $('dd-count');
+    if (cnt) cnt.textContent = cur.length;
+    const dirty = this._ddIsDirty();
+    const save = $('dd-save'), rev = $('dd-revert');
+    if (save) save.disabled = !dirty;
+    if (rev) rev.disabled = !dirty;
+  },
+
+  _ddSort() {
+    const ta = $('st-dd-' + this._ddActive);
     if (!ta) return;
-    const items = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+    const sorted = this._ddCurrentItems()
+      .sort((a, b) => a.localeCompare(b, 'it', { numeric: true, sensitivity: 'base' }));
+    ta.value = sorted.join('\n');
+    this._ddDirty();
+  },
+
+  _ddRevert() {
+    const ta = $('st-dd-' + this._ddActive);
+    if (ta) ta.value = ((this._dropdownData || {})[this._ddActive] || []).join('\n');
+    this._ddDirty();
+  },
+
+  async _ddSave() {
+    const key = this._ddActive;
+    const items = this._ddCurrentItems();
+    const btn = $('dd-save');
+    if (btn) btn.disabled = true;
     try {
       await invoke('set_dropdown_list', { listName: key, items });
       if (!this._dropdownData) this._dropdownData = {};
@@ -516,8 +580,10 @@ const Settings = {
       toast('Lista salvata', 'success');
       await App.loadDropdowns();
       App.initForm();
-    } catch(e) {
+      this._renderDropdown($('st-body')); // refresh counts, reset dirty state
+    } catch (e) {
       toast('Errore: ' + e, 'error');
+      if (btn) btn.disabled = false;
     }
   },
 
