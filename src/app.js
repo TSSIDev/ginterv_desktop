@@ -544,6 +544,10 @@ const App = {
   _firmaPenWidth: 2,
   _firmaHasDraw: false,
   _syncFeedbackTimer: null,
+  _lastSyncAt: 0,
+  _lastSyncCount: null,
+  _syncing: false,
+  _freshTimer: null,
 
   async init() {
     // Apply saved theme
@@ -583,12 +587,23 @@ const App = {
     // Listen for sync-complete event
     listenEvent('sync-complete', e => {
       const { account, count, last_sync } = e.payload || {};
-      $('sb-sync-text').textContent =
-        `Sync: ${new Date(last_sync).toLocaleTimeString('it-IT', {hour:'2-digit',minute:'2-digit'})} · ${count} aggiornati`;
+      this._lastSyncAt = Date.parse(last_sync) || Date.now();
+      this._lastSyncCount = count ?? 0;
       $('sb-dot').className = 'sb-dot g';
+      this._renderFreshness();
       this.showSyncFeedback(`${count || 0} aggiornati`);
       this.loadInterventions();
     });
+
+    // Seamless freshness: keep the relative "Sincronizzato N fa" label live,
+    // and resync when the user returns to the app or the network comes back —
+    // so reopening the window shows fresh data without hitting the sync button.
+    this._freshTimer = setInterval(() => this._renderFreshness(), 30000);
+    window.addEventListener('focus', () => this.maybeSyncOnFocus());
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.maybeSyncOnFocus();
+    });
+    window.addEventListener('online', () => this.maybeSyncOnFocus(true));
 
     // Check if accounts exist
     let accounts = [];
@@ -1092,20 +1107,53 @@ const App = {
     this._syncFeedbackTimer = setTimeout(() => el.classList.remove('show'), 2200);
   },
 
+  // Only resync on focus/wake when the data is older than this, to avoid a
+  // burst of syncs from rapid focus changes.
+  _SYNC_FOCUS_STALE_MS: 60000,
+
+  // Resync when the window regains focus / the PC wakes / the network returns.
+  // `force` (network back online) always syncs; otherwise only when stale.
+  maybeSyncOnFocus(force = false) {
+    if (this._syncing || !this.accounts?.length) return;
+    if (!force && this._lastSyncAt && Date.now() - this._lastSyncAt < this._SYNC_FOCUS_STALE_MS) return;
+    this.triggerSync();
+  },
+
+  // Ambient freshness label: "Sincronizzato N fa", kept live by a ticker.
+  _renderFreshness() {
+    const el = $('sb-sync-text');
+    if (!el || this._syncing || !this._lastSyncAt) return;
+    const sec = Math.max(0, Math.round((Date.now() - this._lastSyncAt) / 1000));
+    let rel;
+    if (sec < 5) rel = 'adesso';
+    else if (sec < 60) rel = `${sec}s fa`;
+    else if (sec < 3600) rel = `${Math.floor(sec / 60)} min fa`;
+    else rel = `${Math.floor(sec / 3600)} h fa`;
+    const cnt = this._lastSyncCount;
+    el.textContent = `Sincronizzato ${rel}` + (cnt != null ? ` · ${cnt} aggiornati` : '');
+  },
+
   async triggerSync() {
+    if (this._syncing) return;
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (!primary) { toast('Nessun account', 'warning'); return; }
+    this._syncing = true;
     const btn = $('sync-btn');
     btn?.classList.add('syncing');
     $('sb-sync-text').textContent = 'Sincronizzazione…';
     try {
       await invoke('trigger_sync', { email: primary.email });
+      this._lastSyncAt = Date.now();
       this.showSyncFeedback('Aggiornato');
     } catch(e) {
       this.showSyncFeedback('Errore sync', 'error');
       $('sb-sync-text').textContent = 'Errore sync';
       toast('Sync error: ' + e, 'error');
-    } finally { btn?.classList.remove('syncing'); }
+    } finally {
+      this._syncing = false;
+      btn?.classList.remove('syncing');
+      this._renderFreshness();
+    }
   },
 
   onSearchInput(val) {
