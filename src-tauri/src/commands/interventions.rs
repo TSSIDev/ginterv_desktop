@@ -1,10 +1,38 @@
 use crate::db::cache::{self, CachedItem};
+use crate::db::queue;
 use crate::exchange::client::EwsClient;
 use crate::exchange::{parse, soap};
 use crate::exchange::parse::InterventionItem;
+use crate::flush;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use std::sync::Arc;
+use tauri::{Manager, State};
+
+/// Fire-and-forget flush of the queue for `email` (used after optimistic writes).
+fn spawn_flush(email: String, app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let acc = {
+            let st = app.state::<AppState>();
+            let conn = match st.db.0.lock() { Ok(c) => c, Err(_) => return };
+            crate::db::cache::list_accounts(&conn).ok()
+                .and_then(|v| v.into_iter().find(|a| a.email == email))
+        };
+        let Some(acc) = acc else { return };
+        let server = acc.server.unwrap_or_default();
+        let client = match EwsClient::connect(&server, &email, acc.domain.as_deref()) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let state = Arc::new(AppState {
+            db: crate::db::DbConn(std::sync::Mutex::new(match crate::db::open() {
+                Ok(c) => c,
+                Err(_) => return,
+            })),
+        });
+        let _ = flush::flush_pending(&client, &email, &state, Some(&app)).await;
+    });
+}
 
 fn get_client(state: &State<'_, AppState>, email: &str) -> Result<EwsClient, String> {
     let conn = state.db.0.lock().map_err(|e| e.to_string())?;
@@ -134,17 +162,24 @@ fn item_from_data(item_id: String, change_key: String, d: &InterventionData, sub
 pub async fn create_intervention(
     data: InterventionData,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<InterventionItem, String> {
-    let client = get_client(&state, &data.email)?;
-
     let subject = resolve_subject(&data);
-    let soap_data = build_soap_data(&data.email, &data, &subject);
-    let soap_body = soap::create_item(&soap_data);
-    let resp = client.call_action("CreateItem", &soap_body).map_err(|e| e.to_string())?;
-    let (item_id, change_key) = parse::parse_create_item(&resp).map_err(|e| e.to_string())?;
+    let local_id = format!("tmp-{}", uuid::Uuid::new_v4());
+    let mut item = item_from_data(local_id.clone(), String::new(), &data, subject);
+    item.pending_op = "create".to_string();
 
-    let item = item_from_data(item_id, change_key, &data, subject);
-    cache_upserted(&state, &item, &data.email);
+    {
+        let conn = state.db.0.lock().map_err(|e| e.to_string())?;
+        let mut cached = CachedItem::from_item(&item, &data.email);
+        cached.pending_op = Some("create".into());
+        cache::upsert_item(&conn, &cached).map_err(|e| e.to_string())?;
+        let payload = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+        queue::enqueue(&conn, &data.email, "create", &local_id, None, None, Some(&payload))
+            .map_err(|e| e.to_string())?;
+    }
+
+    spawn_flush(data.email.clone(), app);
     Ok(item)
 }
 
@@ -160,18 +195,25 @@ pub struct UpdateInterventionInput {
 pub async fn update_intervention(
     input: UpdateInterventionInput,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<InterventionItem, String> {
-    let client = get_client(&state, &input.email)?;
-
     let subject = resolve_subject(&input.data);
-    let soap_data = build_soap_data(&input.email, &input.data, &subject);
-    let soap_body = soap::update_item(&input.item_id, &input.change_key, &soap_data);
-    let resp = client.call_action("UpdateItem", &soap_body).map_err(|e| e.to_string())?;
-    let new_ck = parse::parse_update_item(&resp).map_err(|e| e.to_string())?;
+    let mut item = item_from_data(input.item_id.clone(), input.change_key.clone(), &input.data, subject);
+    item.pending_op = "update".to_string();
 
-    let change_key = if new_ck.is_empty() { input.change_key } else { new_ck };
-    let item = item_from_data(input.item_id.clone(), change_key, &input.data, subject);
-    cache_upserted(&state, &item, &input.email);
+    {
+        let conn = state.db.0.lock().map_err(|e| e.to_string())?;
+        let mut cached = CachedItem::from_item(&item, &input.email);
+        cached.pending_op = Some("update".into());
+        cache::upsert_item(&conn, &cached).map_err(|e| e.to_string())?;
+        let payload = serde_json::to_string(&input.data).map_err(|e| e.to_string())?;
+        queue::enqueue(
+            &conn, &input.email, "update", &input.item_id,
+            Some(&input.item_id), Some(&input.change_key), Some(&payload),
+        ).map_err(|e| e.to_string())?;
+    }
+
+    spawn_flush(input.email.clone(), app);
     Ok(item)
 }
 
@@ -181,15 +223,17 @@ pub async fn delete_intervention(
     item_id: String,
     change_key: String,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let client = get_client(&state, &email)?;
-    let soap_body = soap::delete_item(&item_id, &change_key);
-    let resp = client.call_action("DeleteItem", &soap_body).map_err(|e| e.to_string())?;
-    parse::parse_delete_item(&resp).map_err(|e| e.to_string())?;
-
-    if let Ok(conn) = state.db.0.lock() {
-        cache::delete_item(&conn, &email, &item_id).ok();
+    {
+        let conn = state.db.0.lock().map_err(|e| e.to_string())?;
+        cache::mark_pending(&conn, &email, &item_id, "delete").map_err(|e| e.to_string())?;
+        queue::enqueue(
+            &conn, &email, "delete", &item_id,
+            Some(&item_id), Some(&change_key), None,
+        ).map_err(|e| e.to_string())?;
     }
+    spawn_flush(email, app);
     Ok(())
 }
 
