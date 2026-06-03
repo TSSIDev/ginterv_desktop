@@ -11,9 +11,8 @@ use tauri::Emitter;
 /// (treat as no conflict — e.g. a create has no base).
 pub fn is_conflict(base_change_key: Option<&str>, server_change_key: &str) -> bool {
     match base_change_key {
-        None => false,
-        Some(b) if b.is_empty() => false,
-        Some(b) => b != server_change_key,
+        Some(b) if !b.is_empty() => b != server_change_key,
+        _ => false,
     }
 }
 
