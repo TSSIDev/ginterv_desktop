@@ -62,6 +62,50 @@ fn local_name(qname: &quick_xml::name::QName) -> String {
     String::from_utf8_lossy(bytes).to_string()
 }
 
+/// Default wait when EWS reports throttling without a `BackOffMilliseconds` hint.
+const DEFAULT_THROTTLE_BACKOFF_MS: u64 = 5_000;
+/// Upper bound so a bogus/huge hint can't stall a sync indefinitely.
+const MAX_THROTTLE_BACKOFF_MS: u64 = 60_000;
+
+/// If `xml` is an EWS throttling response (`ErrorServerBusy`), return how long
+/// to back off — the server's `BackOffMilliseconds` hint, or a default — clamped
+/// to a sane ceiling. Returns `None` for any non-throttled response.
+pub fn throttle_backoff(xml: &str) -> Option<std::time::Duration> {
+    if !xml.contains("ErrorServerBusy") {
+        return None;
+    }
+    let ms = backoff_hint_ms(xml)
+        .unwrap_or(DEFAULT_THROTTLE_BACKOFF_MS)
+        .clamp(1, MAX_THROTTLE_BACKOFF_MS);
+    Some(std::time::Duration::from_millis(ms))
+}
+
+/// Extract `<t:Value Name="BackOffMilliseconds">N</t:Value>` from a fault's MessageXml.
+fn backoff_hint_ms(xml: &str) -> Option<u64> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut capture = false;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if local_name(&e.name()) == "Value" => {
+                capture = e.attributes().flatten().any(|a| {
+                    a.key.local_name().into_inner() == b"Name"
+                        && a.unescape_value().map(|v| v == "BackOffMilliseconds").unwrap_or(false)
+                });
+            }
+            Ok(Event::Text(e)) if capture => {
+                return e.unescape().ok()?.trim().parse::<u64>().ok();
+            }
+            Ok(Event::End(_)) => capture = false,
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    None
+}
+
 /// Check that the SOAP response is not a Fault.
 fn check_fault(xml: &str) -> Result<()> {
     if xml.contains("<soap:Fault>") || xml.contains(":Fault>") {
@@ -392,6 +436,42 @@ mod tests {
         let (id, ck) = parse_create_item(CREATE_RESPONSE).unwrap();
         assert_eq!(id, "AAMkNEW456");
         assert_eq!(ck, "DwAAABZ");
+    }
+
+    const THROTTLE_RESPONSE: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Body>
+    <m:GetItemResponse>
+      <m:ResponseMessages>
+        <m:GetItemResponseMessage ResponseClass="Error">
+          <m:ResponseCode>ErrorServerBusy</m:ResponseCode>
+          <m:MessageXml>
+            <t:Value Name="BackOffMilliseconds">25000</t:Value>
+          </m:MessageXml>
+        </m:GetItemResponseMessage>
+      </m:ResponseMessages>
+    </m:GetItemResponse>
+  </soap:Body>
+</soap:Envelope>"#;
+
+    #[test]
+    fn test_throttle_backoff_reads_hint() {
+        let d = throttle_backoff(THROTTLE_RESPONSE).expect("should detect throttling");
+        assert_eq!(d.as_millis(), 25_000);
+    }
+
+    #[test]
+    fn test_throttle_backoff_none_for_normal() {
+        assert!(throttle_backoff(FIND_ITEM_RESPONSE).is_none());
+    }
+
+    #[test]
+    fn test_throttle_backoff_default_without_hint() {
+        let xml = "<x><m:ResponseCode>ErrorServerBusy</m:ResponseCode></x>";
+        let d = throttle_backoff(xml).expect("throttled");
+        assert_eq!(d.as_millis(), DEFAULT_THROTTLE_BACKOFF_MS as u128);
     }
 
     #[test]

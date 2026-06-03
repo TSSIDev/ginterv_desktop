@@ -37,12 +37,20 @@ fn soap_envelope(body: &str) -> String {
     )
 }
 
-/// FindItem (CalendarView) — returns IdOnly + all extended props for date range.
+/// FindItem (CalendarView) — returns IdOnly + core metadata + all extended props
+/// for the date range. Carrying Subject/Start/End/Location here means new/changed
+/// items can be cached immediately from FindItem; GetItem is only needed to pull
+/// the (non-streamable) body afterwards.
 pub fn find_items(email: &str, start: &str, end: &str) -> String {
+    let meta_field_uris = r#"<t:FieldURI FieldURI="item:Subject"/>
+        <t:FieldURI FieldURI="calendar:Start"/>
+        <t:FieldURI FieldURI="calendar:End"/>
+        <t:FieldURI FieldURI="item:Location"/>"#;
     let body = format!(
         r#"<m:FindItem Traversal="Shallow">
       <m:ItemShape>
         <t:BaseShape>IdOnly</t:BaseShape>
+        {meta}
         {ext}
       </m:ItemShape>
       <m:CalendarView StartDate="{start}" EndDate="{end}"/>
@@ -52,6 +60,7 @@ pub fn find_items(email: &str, start: &str, end: &str) -> String {
         </t:DistinguishedFolderId>
       </m:ParentFolderIds>
     </m:FindItem>"#,
+        meta = meta_field_uris,
         ext = ext_field_uris(),
         start = start,
         end = end,

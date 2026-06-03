@@ -152,6 +152,45 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
     Ok(())
 }
 
+/// Upsert everything **except** `body_html`, preserving any body already cached.
+/// Used to land FindItem metadata (which never carries the body) immediately,
+/// so new/changed items appear right away and survive a throttled GetItem; the
+/// body is filled in afterwards by a full `upsert_item`.
+pub fn upsert_item_metadata(conn: &Connection, item: &CachedItem) -> Result<()> {
+    conn.execute(
+        "INSERT INTO intervention_cache (
+            user_email, exchange_item_id, change_key, start_dt, end_dt,
+            subject, nome_tecnico, ragione_sociale, descrizione, altro,
+            tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
+            luogo, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+        ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
+            change_key        = excluded.change_key,
+            start_dt          = excluded.start_dt,
+            end_dt            = excluded.end_dt,
+            subject           = excluded.subject,
+            nome_tecnico      = excluded.nome_tecnico,
+            ragione_sociale   = excluded.ragione_sociale,
+            descrizione       = excluded.descrizione,
+            altro             = excluded.altro,
+            tipo_tariffa      = excluded.tipo_tariffa,
+            tipo_fatturazione = excluded.tipo_fatturazione,
+            trasferta         = excluded.trasferta,
+            durata            = excluded.durata,
+            luogo             = excluded.luogo,
+            schema_version    = excluded.schema_version,
+            synced_at         = excluded.synced_at",
+        params![
+            item.user_email, item.exchange_item_id, item.change_key,
+            item.start_dt, item.end_dt, item.subject, item.nome_tecnico,
+            item.ragione_sociale, item.descrizione, item.altro,
+            item.tipo_tariffa, item.tipo_fatturazione, item.trasferta,
+            item.durata, item.body_html, item.luogo, item.schema_version, item.synced_at,
+        ],
+    )?;
+    Ok(())
+}
+
 pub fn get_range(
     conn: &Connection,
     user_email: &str,
@@ -338,6 +377,53 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].change_key, "CK2");
         assert_eq!(results[0].nome_tecnico.as_deref(), Some("XY"));
+    }
+
+    #[test]
+    fn test_upsert_metadata_preserves_body() {
+        let conn = setup();
+        let mut item = CachedItem {
+            id: 0,
+            user_email: "u@u.com".into(),
+            exchange_item_id: "DDD".into(),
+            change_key: "CK1".into(),
+            start_dt: "2024-06-01T08:00:00".into(),
+            end_dt: "2024-06-01T09:00:00".into(),
+            subject: Some("Old".into()), nome_tecnico: None, ragione_sociale: None,
+            descrizione: None, altro: None, tipo_tariffa: None,
+            tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: Some("<p>keep me</p>".into()), luogo: None, schema_version: 1,
+            synced_at: "2024-06-01T10:00:00".into(),
+        };
+        upsert_item(&conn, &item).unwrap();
+
+        // Metadata-only upsert with an empty body must NOT wipe the cached body.
+        item.change_key = "CK2".into();
+        item.subject = Some("New".into());
+        item.body_html = Some(String::new());
+        upsert_item_metadata(&conn, &item).unwrap();
+
+        let r = get_by_item_id(&conn, "u@u.com", "DDD").unwrap().unwrap();
+        assert_eq!(r.change_key, "CK2");
+        assert_eq!(r.subject.as_deref(), Some("New"));
+        assert_eq!(r.body_html.as_deref(), Some("<p>keep me</p>"));
+    }
+
+    #[test]
+    fn test_upsert_metadata_inserts_new() {
+        let conn = setup();
+        let item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "EEE".into(),
+            change_key: "CK".into(), start_dt: "2024-07-01T08:00:00".into(),
+            end_dt: "2024-07-01T09:00:00".into(), subject: Some("Fresh".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: Some(String::new()), luogo: None, schema_version: 1,
+            synced_at: "2024-07-01T10:00:00".into(),
+        };
+        upsert_item_metadata(&conn, &item).unwrap();
+        let r = get_by_item_id(&conn, "u@u.com", "EEE").unwrap().unwrap();
+        assert_eq!(r.subject.as_deref(), Some("Fresh"));
     }
 
     #[test]

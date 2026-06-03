@@ -5,6 +5,8 @@ use std::time::Duration;
 
 /// Max authenticated session-clients kept warm in the idle pool.
 const MAX_IDLE_SESSIONS: usize = 32;
+/// How many times to honour an EWS `ErrorServerBusy` back-off before giving up.
+const MAX_THROTTLE_RETRIES: u32 = 3;
 
 /// A credential that has been proven to work, so warm calls skip the
 /// candidate-probing sweep and re-authenticate directly when needed.
@@ -56,6 +58,7 @@ impl EwsClient {
             .timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(1)
             .pool_idle_timeout(Duration::from_secs(120))
+            .gzip(true) // EWS supports gzip; large SOAP XML payloads compress well
             .build()?)
     }
 
@@ -108,10 +111,28 @@ impl EwsClient {
         }
     }
 
-    /// Send a SOAP request. Reuses an authenticated keep-alive connection when
+    /// Send a SOAP request, honouring EWS throttling: when the server replies
+    /// with `ErrorServerBusy` it includes a `BackOffMilliseconds` hint — we wait
+    /// that long and retry instead of hammering the server (which earns a ban).
+    pub fn call(&self, soap_action: &str, body: &str) -> Result<String> {
+        let mut attempt = 0u32;
+        loop {
+            let text = self.call_once(soap_action, body)?;
+            if let Some(backoff) = crate::exchange::parse::throttle_backoff(&text) {
+                if attempt < MAX_THROTTLE_RETRIES {
+                    attempt += 1;
+                    std::thread::sleep(backoff);
+                    continue;
+                }
+            }
+            return Ok(text);
+        }
+    }
+
+    /// One transport attempt: reuses an authenticated keep-alive connection when
     /// available; otherwise authenticates (remembered credential first, then a
     /// full NTLM→Basic candidate sweep) and remembers what worked.
-    pub fn call(&self, soap_action: &str, body: &str) -> Result<String> {
+    fn call_once(&self, soap_action: &str, body: &str) -> Result<String> {
         // Borrow a warm session if one is idle.
         let warm = self.sessions.lock().ok().and_then(|mut v| v.pop());
 

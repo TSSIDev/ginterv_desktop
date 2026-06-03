@@ -126,6 +126,21 @@ pub async fn sync_account(
         .map(|i| (i.exchange_item_id.clone(), i.change_key.clone()))
         .collect();
 
+    // Land FindItem metadata (subject/times/location/ext props) for the to-fetch
+    // items right away, preserving any cached body. New items become visible
+    // immediately and survive a throttled/failed GetItem; the body is filled in
+    // by the full upsert below.
+    {
+        let to_fetch_ids: std::collections::HashSet<&str> =
+            to_fetch.iter().map(|(id, _)| id.as_str()).collect();
+        if let Ok(conn) = state.db.0.lock() {
+            for item in remote_items.iter().filter(|i| to_fetch_ids.contains(i.exchange_item_id.as_str())) {
+                let meta = CachedItem::from_item(item, email);
+                cache::upsert_item_metadata(&conn, &meta).ok();
+            }
+        }
+    }
+
     // Fetch full items in batched GetItem calls (many ItemIds per round-trip),
     // running several batches concurrently and keeping `concurrency` in flight.
     // Batching slashes round-trips and NTLM handshakes; the persistent EwsClient
