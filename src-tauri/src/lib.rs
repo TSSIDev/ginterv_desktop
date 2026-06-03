@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod db;
 pub mod exchange;
+pub mod flush;
 pub mod keychain;
 pub mod ntlm;
 pub mod pdf;

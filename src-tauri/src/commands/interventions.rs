@@ -57,7 +57,7 @@ pub async fn get_intervention(
     Ok(item)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InterventionData {
     pub email: String,
     pub subject: Option<String>,
@@ -75,7 +75,7 @@ pub struct InterventionData {
     pub durata: Option<String>,
 }
 
-fn build_soap_data<'a>(email: &'a str, d: &'a InterventionData, subject: &'a str) -> soap::CreateItemData<'a> {
+pub fn build_soap_data<'a>(email: &'a str, d: &'a InterventionData, subject: &'a str) -> soap::CreateItemData<'a> {
     soap::CreateItemData {
         email,
         subject,
@@ -95,7 +95,7 @@ fn build_soap_data<'a>(email: &'a str, d: &'a InterventionData, subject: &'a str
 }
 
 /// Use the explicit subject if provided, else build one from the structured fields.
-fn resolve_subject(d: &InterventionData) -> String {
+pub fn resolve_subject(d: &InterventionData) -> String {
     d.subject.clone().unwrap_or_else(|| {
         crate::exchange::subject::build_subject(
             d.nome_tecnico.as_deref().unwrap_or(""),
