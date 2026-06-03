@@ -1,7 +1,37 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, Result, Row};
 use serde::{Deserialize, Serialize};
 
 pub const CACHE_SCHEMA_VERSION: i64 = 1;
+
+/// Column list shared by every `intervention_cache` SELECT (order matches `row_to_cached`).
+const CACHE_COLS: &str = "id, user_email, exchange_item_id, change_key, start_dt, end_dt,
+        subject, nome_tecnico, ragione_sociale, descrizione, altro,
+        tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
+        luogo, schema_version, synced_at";
+
+fn row_to_cached(r: &Row) -> Result<CachedItem> {
+    Ok(CachedItem {
+        id: r.get(0)?,
+        user_email: r.get(1)?,
+        exchange_item_id: r.get(2)?,
+        change_key: r.get(3)?,
+        start_dt: r.get(4)?,
+        end_dt: r.get(5)?,
+        subject: r.get(6)?,
+        nome_tecnico: r.get(7)?,
+        ragione_sociale: r.get(8)?,
+        descrizione: r.get(9)?,
+        altro: r.get(10)?,
+        tipo_tariffa: r.get(11)?,
+        tipo_fatturazione: r.get(12)?,
+        trasferta: r.get(13)?,
+        durata: r.get(14)?,
+        body_html: r.get(15)?,
+        luogo: r.get(16)?,
+        schema_version: r.get(17)?,
+        synced_at: r.get(18)?,
+    })
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedItem {
@@ -21,6 +51,7 @@ pub struct CachedItem {
     pub trasferta: Option<String>,
     pub durata: Option<String>,
     pub body_html: Option<String>,
+    pub luogo: Option<String>,
     pub schema_version: i64,
     pub synced_at: String,
 }
@@ -36,14 +67,63 @@ pub struct AccountRow {
     pub is_primary: bool,
 }
 
+impl CachedItem {
+    /// Build a cache row from a parsed Exchange item for the given user.
+    pub fn from_item(item: &crate::exchange::parse::InterventionItem, email: &str) -> Self {
+        CachedItem {
+            id: 0,
+            user_email: email.to_string(),
+            exchange_item_id: item.exchange_item_id.clone(),
+            change_key: item.change_key.clone(),
+            start_dt: item.start_dt.clone(),
+            end_dt: item.end_dt.clone(),
+            subject: Some(item.subject.clone()),
+            nome_tecnico: Some(item.nome_tecnico.clone()),
+            ragione_sociale: Some(item.ragione_sociale.clone()),
+            descrizione: Some(item.descrizione.clone()),
+            altro: Some(item.altro.clone()),
+            tipo_tariffa: Some(item.tipo_tariffa.clone()),
+            tipo_fatturazione: Some(item.tipo_fatturazione.clone()),
+            trasferta: Some(item.trasferta.clone()),
+            durata: Some(item.durata.clone()),
+            body_html: Some(item.body_html.clone()),
+            luogo: Some(item.luogo.clone()),
+            schema_version: CACHE_SCHEMA_VERSION,
+            synced_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
+impl From<CachedItem> for crate::exchange::parse::InterventionItem {
+    fn from(c: CachedItem) -> Self {
+        crate::exchange::parse::InterventionItem {
+            exchange_item_id: c.exchange_item_id,
+            change_key: c.change_key,
+            start_dt: c.start_dt,
+            end_dt: c.end_dt,
+            subject: c.subject.unwrap_or_default(),
+            nome_tecnico: c.nome_tecnico.unwrap_or_default(),
+            ragione_sociale: c.ragione_sociale.unwrap_or_default(),
+            descrizione: c.descrizione.unwrap_or_default(),
+            altro: c.altro.unwrap_or_default(),
+            tipo_tariffa: c.tipo_tariffa.unwrap_or_default(),
+            tipo_fatturazione: c.tipo_fatturazione.unwrap_or_default(),
+            trasferta: c.trasferta.unwrap_or_default(),
+            durata: c.durata.unwrap_or_default(),
+            body_html: c.body_html.unwrap_or_default(),
+            luogo: c.luogo.unwrap_or_default(),
+        }
+    }
+}
+
 pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
     conn.execute(
         "INSERT INTO intervention_cache (
             user_email, exchange_item_id, change_key, start_dt, end_dt,
             subject, nome_tecnico, ragione_sociale, descrizione, altro,
             tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-            schema_version, synced_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
+            luogo, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
         ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
             change_key        = excluded.change_key,
             start_dt          = excluded.start_dt,
@@ -58,6 +138,7 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             trasferta         = excluded.trasferta,
             durata            = excluded.durata,
             body_html         = excluded.body_html,
+            luogo             = excluded.luogo,
             schema_version    = excluded.schema_version,
             synced_at         = excluded.synced_at",
         params![
@@ -65,7 +146,7 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             item.start_dt, item.end_dt, item.subject, item.nome_tecnico,
             item.ragione_sociale, item.descrizione, item.altro,
             item.tipo_tariffa, item.tipo_fatturazione, item.trasferta,
-            item.durata, item.body_html, item.schema_version, item.synced_at,
+            item.durata, item.body_html, item.luogo, item.schema_version, item.synced_at,
         ],
     )?;
     Ok(())
@@ -77,37 +158,14 @@ pub fn get_range(
     start: &str,
     end: &str,
 ) -> Result<Vec<CachedItem>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, user_email, exchange_item_id, change_key, start_dt, end_dt,
-                subject, nome_tecnico, ragione_sociale, descrizione, altro,
-                tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-                schema_version, synced_at
+    let sql = format!(
+        "SELECT {CACHE_COLS}
          FROM intervention_cache
          WHERE user_email = ?1 AND start_dt >= ?2 AND start_dt < ?3
-         ORDER BY start_dt",
-    )?;
-    let rows = stmt.query_map(params![user_email, start, end], |r| {
-        Ok(CachedItem {
-            id: r.get(0)?,
-            user_email: r.get(1)?,
-            exchange_item_id: r.get(2)?,
-            change_key: r.get(3)?,
-            start_dt: r.get(4)?,
-            end_dt: r.get(5)?,
-            subject: r.get(6)?,
-            nome_tecnico: r.get(7)?,
-            ragione_sociale: r.get(8)?,
-            descrizione: r.get(9)?,
-            altro: r.get(10)?,
-            tipo_tariffa: r.get(11)?,
-            tipo_fatturazione: r.get(12)?,
-            trasferta: r.get(13)?,
-            durata: r.get(14)?,
-            body_html: r.get(15)?,
-            schema_version: r.get(16)?,
-            synced_at: r.get(17)?,
-        })
-    })?;
+         ORDER BY start_dt"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params![user_email, start, end], row_to_cached)?;
     rows.collect()
 }
 
@@ -116,36 +174,13 @@ pub fn get_by_item_id(
     user_email: &str,
     exchange_item_id: &str,
 ) -> Result<Option<CachedItem>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, user_email, exchange_item_id, change_key, start_dt, end_dt,
-                subject, nome_tecnico, ragione_sociale, descrizione, altro,
-                tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-                schema_version, synced_at
+    let sql = format!(
+        "SELECT {CACHE_COLS}
          FROM intervention_cache
-         WHERE user_email = ?1 AND exchange_item_id = ?2",
-    )?;
-    let mut rows = stmt.query_map(params![user_email, exchange_item_id], |r| {
-        Ok(CachedItem {
-            id: r.get(0)?,
-            user_email: r.get(1)?,
-            exchange_item_id: r.get(2)?,
-            change_key: r.get(3)?,
-            start_dt: r.get(4)?,
-            end_dt: r.get(5)?,
-            subject: r.get(6)?,
-            nome_tecnico: r.get(7)?,
-            ragione_sociale: r.get(8)?,
-            descrizione: r.get(9)?,
-            altro: r.get(10)?,
-            tipo_tariffa: r.get(11)?,
-            tipo_fatturazione: r.get(12)?,
-            trasferta: r.get(13)?,
-            durata: r.get(14)?,
-            body_html: r.get(15)?,
-            schema_version: r.get(16)?,
-            synced_at: r.get(17)?,
-        })
-    })?;
+         WHERE user_email = ?1 AND exchange_item_id = ?2"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query_map(params![user_email, exchange_item_id], row_to_cached)?;
     rows.next().transpose()
 }
 
@@ -268,6 +303,7 @@ mod tests {
             trasferta: Some("No".into()),
             durata: Some("120".into()),
             body_html: Some("<p>note</p>".into()),
+            luogo: None,
             schema_version: CACHE_SCHEMA_VERSION,
             synced_at: "2024-01-10T12:00:00".into(),
         };
@@ -291,7 +327,7 @@ mod tests {
             subject: None, nome_tecnico: None, ragione_sociale: None,
             descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, schema_version: 1,
+            body_html: None, luogo: None, schema_version: 1,
             synced_at: "2024-03-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -313,7 +349,7 @@ mod tests {
             end_dt: "2024-05-01T11:00:00".into(), subject: None, nome_tecnico: None,
             ragione_sociale: None, descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None, body_html: None,
-            schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
+            luogo: None, schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
         delete_item(&conn, "a@b.com", "CCC").unwrap();

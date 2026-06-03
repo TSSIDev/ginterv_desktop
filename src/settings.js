@@ -41,7 +41,7 @@ const Settings = {
   },
 
   _renderNav() {
-    const nav = document.getElementById('st-nav');
+    const nav = $('st-nav');
     if (!nav) return;
     const sections = [
       { id: 'account',  label: 'Account Exchange' },
@@ -67,7 +67,7 @@ const Settings = {
   },
 
   _renderBody() {
-    const body = document.getElementById('st-body');
+    const body = $('st-body');
     if (!body) return;
     switch (this._section) {
       case 'account':  this._renderAccount(body);  break;
@@ -162,23 +162,23 @@ const Settings = {
     this._addMode = true;
     this._addData = { email: '', password: '', server: '', domain: '', displayName: '', sigla: '' };
     this._addTested = false;
-    const body = document.getElementById('st-body');
+    const body = $('st-body');
     if (body) body.innerHTML = this._addFormHTML();
   },
 
   _collectAdd() {
-    this._addData.email       = document.getElementById('st-add-email')?.value.trim() || '';
-    this._addData.password    = document.getElementById('st-add-password')?.value || '';
-    this._addData.server      = document.getElementById('st-add-server')?.value.trim() || '';
-    this._addData.domain      = document.getElementById('st-add-domain')?.value.trim() || '';
-    this._addData.displayName = document.getElementById('st-add-displayname')?.value.trim() || '';
-    this._addData.sigla       = document.getElementById('st-add-sigla')?.value.trim() || '';
+    this._addData.email       = $('st-add-email')?.value.trim() || '';
+    this._addData.password    = $('st-add-password')?.value || '';
+    this._addData.server      = $('st-add-server')?.value.trim() || '';
+    this._addData.domain      = $('st-add-domain')?.value.trim() || '';
+    this._addData.displayName = $('st-add-displayname')?.value.trim() || '';
+    this._addData.sigla       = $('st-add-sigla')?.value.trim() || '';
   },
 
   async _testAdd() {
     this._collectAdd();
     if (!this._addData.email || !this._addData.password) { toast('Email e password obbligatorie', 'error'); return; }
-    const res = document.getElementById('st-add-test-result');
+    const res = $('st-add-test-result');
     res.innerHTML = '<span class="spinner"></span> Test in corso…';
     try {
       const result = await invoke('test_connection', {
@@ -190,7 +190,7 @@ const Settings = {
       if (result.ok) {
         res.innerHTML = `<div class="test-result ok"><div class="test-dot ok"></div><div class="test-msg ok">Connessione riuscita</div></div>`;
         this._addTested = true;
-        const btn = document.getElementById('st-add-save-btn');
+        const btn = $('st-add-save-btn');
         if (btn) btn.disabled = false;
       } else {
         res.innerHTML = `<div class="test-result err"><div class="test-dot err"></div><div class="test-msg err">${result.error || 'Connessione fallita'}</div></div>`;
@@ -203,7 +203,7 @@ const Settings = {
   async _saveAdd() {
     this._collectAdd();
     if (!this._addData.email || !this._addData.password) { toast('Email e password obbligatorie', 'error'); return; }
-    const btn = document.getElementById('st-add-save-btn');
+    const btn = $('st-add-save-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Salvataggio…'; }
     try {
       await invoke('save_account', { input: {
@@ -278,8 +278,8 @@ const Settings = {
   },
 
   _initSigCanvas() {
-    const canvas = document.getElementById('st-sig-canvas');
-    const wrap   = document.getElementById('st-sig-wrap');
+    const canvas = $('st-sig-canvas');
+    const wrap   = $('st-sig-wrap');
     if (!canvas || !wrap) return;
 
     canvas.width  = wrap.clientWidth  || 400;
@@ -311,7 +311,7 @@ const Settings = {
       [lastX, lastY] = [x, y];
       if (!this._sigHasDrawn) {
         this._sigHasDrawn = true;
-        const ph = document.getElementById('st-sig-placeholder');
+        const ph = $('st-sig-placeholder');
         if (ph) ph.style.display = 'none';
       }
     };
@@ -326,7 +326,7 @@ const Settings = {
       ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
       [lastX, lastY] = [x, y];
       this._sigHasDrawn = true;
-      const ph = document.getElementById('st-sig-placeholder');
+      const ph = $('st-sig-placeholder');
       if (ph) ph.style.display = 'none';
     };
     canvas.ontouchend = () => { drawing = false; };
@@ -336,7 +336,7 @@ const Settings = {
     if (!this._sigCtx || !this._sigCanvas) return;
     this._sigCtx.clearRect(0, 0, this._sigCanvas.width, this._sigCanvas.height);
     this._sigHasDrawn = false;
-    const ph = document.getElementById('st-sig-placeholder');
+    const ph = $('st-sig-placeholder');
     if (ph) ph.style.display = '';
   },
 
@@ -383,7 +383,7 @@ const Settings = {
   },
 
   async _saveInterval() {
-    const sel = document.getElementById('st-sync-interval');
+    const sel = $('st-sync-interval');
     if (!sel) return;
     const val = sel.value;
     try {
@@ -438,7 +438,7 @@ const Settings = {
     const isLight = t === 'light';
     document.body.classList.toggle('theme-light', isLight);
     localStorage.setItem('gi-theme', t);
-    const themeBtn = document.getElementById('theme-btn');
+    const themeBtn = $('theme-btn');
     if (themeBtn) themeBtn.textContent = isLight ? '☀' : '☾';
     const sw = document.querySelector('.st-theme-switch');
     if (sw) {
@@ -480,7 +480,7 @@ const Settings = {
   },
 
   async _saveDd(key) {
-    const ta = document.getElementById('st-dd-' + key);
+    const ta = $('st-dd-' + key);
     if (!ta) return;
     const items = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
     try {

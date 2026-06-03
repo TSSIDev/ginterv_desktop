@@ -1,3 +1,6 @@
+// ── Shared DOM helper (available to all scripts; search.js loads first) ──────
+window.$ = (id) => document.getElementById(id);
+
 // ── Search & Filter view ─────────────────────────────────────────────────────
 
 const Search = {
@@ -11,7 +14,7 @@ const Search = {
 
   // Called by App.navigate('search')
   onNavigate() {
-    const inp = document.getElementById('global-search-input');
+    const inp = $('global-search-input');
     if (inp) this._q = inp.value;
     this._populateFilters();
     this._render();
@@ -28,7 +31,7 @@ const Search = {
     document.querySelectorAll('.srch-date-pill').forEach(b =>
       b.classList.toggle('on', b.dataset.preset === this._datePreset)
     );
-    const customPanel = document.getElementById('srch-date-custom');
+    const customPanel = $('srch-date-custom');
     if (customPanel) customPanel.style.display = this._datePreset === 'custom' ? 'flex' : 'none';
     if (this._datePreset !== 'custom') { this._dateFrom = null; this._dateTo = null; }
     this._render();
@@ -69,15 +72,15 @@ const Search = {
     this._datePreset = null;
     this._dateFrom = null;
     this._dateTo = null;
-    const globalInp = document.getElementById('global-search-input');
+    const globalInp = $('global-search-input');
     if (globalInp) globalInp.value = '';
-    const clientInp = document.getElementById('srch-client-input');
+    const clientInp = $('srch-client-input');
     if (clientInp) clientInp.value = '';
-    const fromInp = document.getElementById('srch-date-from');
+    const fromInp = $('srch-date-from');
     if (fromInp) fromInp.value = '';
-    const toInp = document.getElementById('srch-date-to');
+    const toInp = $('srch-date-to');
     if (toInp) toInp.value = '';
-    const customPanel = document.getElementById('srch-date-custom');
+    const customPanel = $('srch-date-custom');
     if (customPanel) customPanel.style.display = 'none';
     this._populateFilters();
     this._render();
@@ -87,7 +90,7 @@ const Search = {
     const items = App.interventions || [];
 
     // Tech pills — union of dropdown sigla + unique tecnici in items
-    const techEl = document.getElementById('srch-tech-pills');
+    const techEl = $('srch-tech-pills');
     if (techEl) {
       const fromDD = App._dropdownData?.sigla || [];
       const fromItems = [...new Set(items.map(i => i.nome_tecnico).filter(Boolean))];
@@ -101,7 +104,7 @@ const Search = {
     }
 
     // Tipo pills — unique descrizione from items (up to 10)
-    const tipoEl = document.getElementById('srch-tipo-pills');
+    const tipoEl = $('srch-tipo-pills');
     if (tipoEl) {
       const all = [...new Set(items.map(i => i.descrizione).filter(Boolean))].sort().slice(0, 10);
       tipoEl.innerHTML = all.length
@@ -183,8 +186,8 @@ const Search = {
   },
 
   _render() {
-    const list = document.getElementById('srch-list');
-    const count = document.getElementById('srch-count');
+    const list = $('srch-list');
+    const count = $('srch-count');
     if (!list) return;
 
     const q = this._q.toLowerCase().trim();

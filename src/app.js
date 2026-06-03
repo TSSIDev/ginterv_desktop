@@ -11,6 +11,16 @@ const invoke = (typeof window.__TAURI__ !== 'undefined')
       return null;
     };
 
+// Maps each fuzzy-dropdown key to its InterventionItem field (fill/save share this).
+const FUZZY_FIELD_MAP = {
+  sigla: 'nome_tecnico',
+  cliente: 'ragione_sociale',
+  tipo: 'descrizione',
+  luogo: 'luogo',
+  tariffa: 'tipo_tariffa',
+  addebito: 'tipo_fatturazione',
+};
+
 // ── Listen for Tauri events (no-op in browser) ───────────────────────
 const listenEvent = (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.event)
   ? (ev, cb) => window.__TAURI__.event.listen(ev, cb)
@@ -33,8 +43,8 @@ const WinControls = {
     const w = this._win(); if (!w) return;
     let max = false;
     try { max = await w.isMaximized(); } catch { /* noop */ }
-    const icon = document.getElementById('win-max-icon');
-    const btn = document.getElementById('win-max');
+    const icon = $('win-max-icon');
+    const btn = $('win-max');
     if (!icon) return;
     // Maximized → "restore" (two offset squares); else single square
     icon.innerHTML = max
@@ -81,7 +91,7 @@ function GIIcon(name, size = 12) {
 
 // ── Toast ────────────────────────────────────────────────────────────
 function toast(msg, type = 'info', duration = 3000) {
-  const c = document.getElementById('toast-container');
+  const c = $('toast-container');
   if (!c) return;
   const t = document.createElement('div');
   t.className = `toast ${type}`;
@@ -199,7 +209,7 @@ function durMinToStr(min) {
 
 // Graceful overlay/popup dismiss: play exit animation, then hide.
 function closeOverlay(el) {
-  if (typeof el === 'string') el = document.getElementById(el);
+  if (typeof el === 'string') el = $(el);
   if (!el || el.classList.contains('hidden')) return;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduce) { el.classList.remove('closing'); el.classList.add('hidden'); return; }
@@ -248,13 +258,13 @@ const Wizard = {
   init() {
     this.renderSteps();
     this.renderBody();
-    document.getElementById('wiz-next').onclick = () => this.next();
-    document.getElementById('wiz-back').onclick = () => this.back();
-    document.getElementById('wiz-skip').onclick = () => this.skip();
+    $('wiz-next').onclick = () => this.next();
+    $('wiz-back').onclick = () => this.back();
+    $('wiz-skip').onclick = () => this.skip();
   },
 
   renderSteps() {
-    const el = document.getElementById('wiz-steps');
+    const el = $('wiz-steps');
     el.innerHTML = this.steps.map((s, i) => {
       const state = i < this.step ? 'done' : i === this.step ? 'active' : 'pending';
       const dot = state === 'done' ? '✓' : i + 1;
@@ -269,9 +279,9 @@ const Wizard = {
   },
 
   renderBody() {
-    const el = document.getElementById('wiz-body');
-    const back = document.getElementById('wiz-back');
-    const next = document.getElementById('wiz-next');
+    const el = $('wiz-body');
+    const back = $('wiz-back');
+    const next = $('wiz-next');
     back.style.display = this.step > 0 ? '' : 'none';
 
     if (this.step === 0) {
@@ -355,16 +365,16 @@ const Wizard = {
   },
 
   collectStep1() {
-    this.data.email = document.getElementById('wiz-email')?.value.trim() || '';
-    this.data.password = document.getElementById('wiz-password')?.value || '';
-    this.data.server = document.getElementById('wiz-server')?.value.trim() || '';
-    this.data.domain = document.getElementById('wiz-domain')?.value.trim() || '';
-    this.data.displayName = document.getElementById('wiz-displayname')?.value.trim() || '';
+    this.data.email = $('wiz-email')?.value.trim() || '';
+    this.data.password = $('wiz-password')?.value || '';
+    this.data.server = $('wiz-server')?.value.trim() || '';
+    this.data.domain = $('wiz-domain')?.value.trim() || '';
+    this.data.displayName = $('wiz-displayname')?.value.trim() || '';
   },
 
   async runTest() {
-    const btn = document.getElementById('wiz-test-btn');
-    const res = document.getElementById('wiz-test-result');
+    const btn = $('wiz-test-btn');
+    const res = $('wiz-test-result');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Test in corso…';
     res.innerHTML = '';
@@ -378,7 +388,7 @@ const Wizard = {
       if (result.ok) {
         res.innerHTML = `<div class="test-result ok"><div class="test-dot ok"></div><div class="test-msg ok">Connessione riuscita · Exchange raggiunto</div></div>`;
         this.tested = true;
-        document.getElementById('wiz-next').disabled = false;
+        $('wiz-next').disabled = false;
       } else {
         res.innerHTML = `<div class="test-result err"><div class="test-dot err"></div><div class="test-msg err">${result.error || 'Connessione fallita'}</div></div>`;
       }
@@ -412,7 +422,7 @@ const Wizard = {
   },
 
   async finish() {
-    const btn = document.getElementById('wiz-next');
+    const btn = $('wiz-next');
     btn.disabled = true;
     btn.textContent = 'Salvataggio…';
     try {
@@ -436,7 +446,7 @@ const Wizard = {
   },
 
   hide() {
-    document.getElementById('onboarding').style.display = 'none';
+    $('onboarding').style.display = 'none';
   },
 };
 
@@ -546,18 +556,18 @@ const App = {
       if (e.defaultPrevented) return;
       const target = e.target;
       const isEditable = target?.matches?.('input, textarea, select, [contenteditable="true"]');
-      const newModalOpen = !document.getElementById('modal-new')?.classList.contains('hidden');
+      const newModalOpen = !$('modal-new')?.classList.contains('hidden');
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         this.navigate('search');
-        document.getElementById('global-search-input')?.focus();
+        $('global-search-input')?.focus();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newModalOpen) {
         e.preventDefault();
         this.submitForm();
       }
       if (e.key === 'Escape') {
-        if (!document.getElementById('modal-new')?.classList.contains('hidden')) this.closeNewModal();
+        if (!$('modal-new')?.classList.contains('hidden')) this.closeNewModal();
         else document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => closeOverlay(m));
         this.dismissCalendarCreate();
         closeOverlay('ctx-menu');
@@ -573,9 +583,9 @@ const App = {
     // Listen for sync-complete event
     listenEvent('sync-complete', e => {
       const { account, count, last_sync } = e.payload || {};
-      document.getElementById('sb-sync-text').textContent =
+      $('sb-sync-text').textContent =
         `Sync: ${new Date(last_sync).toLocaleTimeString('it-IT', {hour:'2-digit',minute:'2-digit'})} · ${count} aggiornati`;
-      document.getElementById('sb-dot').className = 'sb-dot g';
+      $('sb-dot').className = 'sb-dot g';
       this.showSyncFeedback(`${count || 0} aggiornati`);
       this.loadInterventions();
     });
@@ -588,13 +598,13 @@ const App = {
     if (accounts.length === 0) {
       Wizard.init();
     } else {
-      document.getElementById('onboarding').style.display = 'none';
+      $('onboarding').style.display = 'none';
       this.enterApp();
     }
   },
 
   enterApp() {
-    document.getElementById('main-app').style.display = 'grid';
+    $('main-app').style.display = 'grid';
     this.renderSidebarAccounts();
     this.loadDropdowns().then(() => this.initForm());
     this.navigate('calendar');
@@ -602,11 +612,11 @@ const App = {
     this.loadInterventions();
     // Set current account in statusbar
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
-    if (primary) document.getElementById('sb-account').textContent = primary.email;
+    if (primary) $('sb-account').textContent = primary.email;
   },
 
   renderSidebarAccounts() {
-    const el = document.getElementById('sidebar-accounts');
+    const el = $('sidebar-accounts');
     if (!this.accounts.length) { el.textContent = 'Nessun account'; return; }
     el.innerHTML = this.accounts.map(a =>
       `<div style="padding:5px 0;display:flex;align-items:center;gap:8px">
@@ -623,12 +633,12 @@ const App = {
     if (view === 'settings') { this.openSettingsModal(); return; }
     this.currentView = view;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    const target = document.getElementById(`view-${view}`);
+    const target = $(`view-${view}`);
     if (target) target.classList.add('active');
     // Highlight the matching sidebar nav segment (calendar / interventions)
     document.querySelectorAll('.nav-seg-btn').forEach(b => b.classList.toggle('on', b.dataset.nav === view));
     syncSeg(document.querySelector('.nav-seg'));
-    document.getElementById('toolbar-new').style.display = '';
+    $('toolbar-new').style.display = '';
     if (view !== 'calendar') this.clearDetail();
     if (view === 'calendar') Calendar.onNavigate();
     else if (view === 'search') Search.onNavigate();
@@ -637,29 +647,29 @@ const App = {
 
   dismissCalendarCreate() {
     if (window.Calendar?._dismissCreate) Calendar._dismissCreate();
-    else document.getElementById('cal-create-modal')?.classList.add('hidden');
+    else $('cal-create-modal')?.classList.add('hidden');
   },
 
   openSettingsModal() {
-    document.getElementById('modal-settings')?.classList.remove('hidden', 'closing');
+    $('modal-settings')?.classList.remove('hidden', 'closing');
     Settings.onNavigate();
   },
 
   openNewModal(prefill) {
-    document.getElementById('modal-new')?.classList.remove('hidden', 'closing');
+    $('modal-new')?.classList.remove('hidden', 'closing');
     this.resetForm();
     if (prefill) {
       const pad = n => String(n).padStart(2, '0');
-      document.getElementById('f-start').value = `${prefill.date}T${pad(prefill.startH)}:${pad(prefill.startM)}`;
+      $('f-start').value = `${prefill.date}T${pad(prefill.startH)}:${pad(prefill.startM)}`;
       const durMin = (prefill.endH * 60 + prefill.endM) - (prefill.startH * 60 + prefill.startM);
       if (durMin > 0) {
         const clamped = Math.min(480, Math.max(15, Math.round(durMin / 15) * 15));
-        document.getElementById('f-durata').value = clamped;
+        $('f-durata').value = clamped;
         this.updateDurata(clamped);
       }
       this.updateSubjectPreview();
     }
-    setTimeout(() => document.getElementById('f-start')?.focus(), 60);
+    setTimeout(() => $('f-start')?.focus(), 60);
   },
 
   closeNewModal() {
@@ -682,7 +692,7 @@ const App = {
   // ── Form ──────────────────────────────────────────────────────────
   initForm() {
     const dd = this._dropdownData || {};
-    const wrap = id => document.getElementById(id);
+    const wrap = id => $(id);
     const mkFuzzy = (id, opts, ph, field) => {
       const w = wrap(id);
       if (!w) return;
@@ -698,7 +708,7 @@ const App = {
   },
 
   initNoteEditor() {
-    const ed = document.getElementById('f-note');
+    const ed = $('f-note');
     if (!ed || ed._wired) return;
     ed._wired = true;
     const toolbar = ed.closest('.note-editor')?.querySelector('.note-toolbar');
@@ -734,7 +744,7 @@ const App = {
   },
 
   getNoteHtml() {
-    const ed = document.getElementById('f-note');
+    const ed = $('f-note');
     if (!ed) return '';
     // An "empty" contenteditable can still hold <br>/<div>; treat no text +
     // no structural content as empty.
@@ -743,26 +753,26 @@ const App = {
   },
 
   setNoteHtml(html) {
-    const ed = document.getElementById('f-note');
+    const ed = $('f-note');
     if (ed) ed.innerHTML = html || '';
   },
 
   resetForm() {
     this.editingItem = null;
     this.clearFormErrors();
-    document.getElementById('form-title').textContent = 'Nuovo intervento';
-    document.getElementById('form-submit-text').textContent = 'Salva intervento';
-    document.getElementById('form-sign-btn').style.display = 'none';
+    $('form-title').textContent = 'Nuovo intervento';
+    $('form-submit-text').textContent = 'Salva intervento';
+    $('form-sign-btn').style.display = 'none';
     // Set default datetime to now rounded to next 15 min (local time)
     const now = new Date();
     now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
     const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    document.getElementById('f-start').value = localISO;
-    document.getElementById('f-durata').value = 60;
+    $('f-start').value = localISO;
+    $('f-durata').value = 60;
     this.updateDurata(60);
-    document.getElementById('f-altro').value = '';
+    $('f-altro').value = '';
     this.setNoteHtml('');
-    document.getElementById('f-trasferta').value = '';
+    $('f-trasferta').value = '';
     Object.values(this._fuzzy).forEach(f => f?.setValue(''));
     // Auto-fill sigla from last used or primary account
     const lastSigla = localStorage.getItem('gi_last_sigla');
@@ -773,37 +783,34 @@ const App = {
 
   fillForm(item) {
     this.editingItem = item;
-    document.getElementById('form-title').textContent = 'Modifica intervento';
-    document.getElementById('form-submit-text').textContent = 'Aggiorna intervento';
-    document.getElementById('form-sign-btn').style.display = '';
+    $('form-title').textContent = 'Modifica intervento';
+    $('form-submit-text').textContent = 'Aggiorna intervento';
+    $('form-sign-btn').style.display = '';
     if (item.start_dt) {
       const d = new Date(item.start_dt);
       const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      document.getElementById('f-start').value = localISO;
+      $('f-start').value = localISO;
     }
     // Duration from start/end
     if (item.start_dt && item.end_dt) {
       const dur = Math.round((new Date(item.end_dt) - new Date(item.start_dt)) / 60000);
       const snapped = Math.max(15, Math.min(480, Math.round(dur / 15) * 15));
-      document.getElementById('f-durata').value = snapped;
+      $('f-durata').value = snapped;
       this.updateDurata(snapped);
     }
-    this._fuzzy.sigla?.setValue(item.nome_tecnico || '');
-    this._fuzzy.cliente?.setValue(item.ragione_sociale || '');
-    this._fuzzy.tipo?.setValue(item.descrizione || '');
-    this._fuzzy.luogo?.setValue(item.luogo || '');
-    this._fuzzy.tariffa?.setValue(item.tipo_tariffa || '');
-    this._fuzzy.addebito?.setValue(item.tipo_fatturazione || '');
-    document.getElementById('f-altro').value = item.altro || '';
+    for (const [k, field] of Object.entries(FUZZY_FIELD_MAP)) {
+      this._fuzzy[k]?.setValue(item[field] || '');
+    }
+    $('f-altro').value = item.altro || '';
     this.setNoteHtml(sanitizeNote(item.body_html));
-    document.getElementById('f-trasferta').value = item.trasferta || '';
+    $('f-trasferta').value = item.trasferta || '';
     this.updateSubjectPreview();
   },
 
   cancelForm() { this.closeNewModal(); },
 
   updateSubjectPreview() {
-    const get = id => document.getElementById(id)?.value || '';
+    const get = id => $(id)?.value || '';
     const s = buildSubject(
       this._fuzzy.sigla?.getValue() || '',
       this._fuzzy.cliente?.getValue() || '',
@@ -812,7 +819,7 @@ const App = {
       this._fuzzy.tariffa?.getValue() || '',
       this._fuzzy.addebito?.getValue() || '',
     );
-    const el = document.getElementById('subject-preview');
+    const el = $('subject-preview');
     if (el) el.textContent = s || '—';
   },
 
@@ -822,8 +829,8 @@ const App = {
   },
 
   setFormError(fieldId, msg) {
-    const field = document.getElementById(fieldId);
-    const group = field?.closest('.fg') || document.getElementById(fieldId)?.parentElement?.closest('.fg');
+    const field = $(fieldId);
+    const group = field?.closest('.fg') || $(fieldId)?.parentElement?.closest('.fg');
     if (!group) return;
     group.classList.add('has-error');
     const err = group.querySelector('.fg-error');
@@ -833,7 +840,7 @@ const App = {
   validateInterventionForm(data) {
     this.clearFormErrors();
     let ok = true;
-    const startVal = document.getElementById('f-start')?.value;
+    const startVal = $('f-start')?.value;
     const cliente = this._fuzzy.cliente?.getValue()?.trim();
     if (!data.email) {
       toast('Configura un account Exchange prima di creare interventi', 'warning');
@@ -855,39 +862,37 @@ const App = {
   },
 
   updateDurata(val) {
-    const el = document.getElementById('f-durata');
+    const el = $('f-durata');
     const min = parseInt(el.min), max = parseInt(el.max);
     const pct = ((parseInt(val) - min) / (max - min) * 100).toFixed(1);
     el.style.setProperty('--fill', pct + '%');
-    document.getElementById('f-durata-val').textContent = durMinToStr(parseInt(val));
+    $('f-durata-val').textContent = durMinToStr(parseInt(val));
   },
 
   _getFormData() {
-    const startVal = document.getElementById('f-start').value;
-    const dur = parseInt(document.getElementById('f-durata').value);
+    const startVal = $('f-start').value;
+    const dur = parseInt($('f-durata').value);
     const start = new Date(startVal);
     const end = new Date(start.getTime() + dur * 60000);
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
-    return {
+    const data = {
       email: primary?.email || '',
       start: start.toISOString(),
       end: end.toISOString(),
-      nome_tecnico: this._fuzzy.sigla?.getValue() || null,
-      ragione_sociale: this._fuzzy.cliente?.getValue() || null,
-      descrizione: this._fuzzy.tipo?.getValue() || null,
-      luogo: this._fuzzy.luogo?.getValue() || null,
-      tipo_tariffa: this._fuzzy.tariffa?.getValue() || null,
-      tipo_fatturazione: this._fuzzy.addebito?.getValue() || null,
-      trasferta: document.getElementById('f-trasferta').value || null,
-      altro: document.getElementById('f-altro').value || null,
+      trasferta: $('f-trasferta').value || null,
+      altro: $('f-altro').value || null,
       body_html: sanitizeNote(this.getNoteHtml()) || null,
     };
+    for (const [k, field] of Object.entries(FUZZY_FIELD_MAP)) {
+      data[field] = this._fuzzy[k]?.getValue() || null;
+    }
+    return data;
   },
 
   async submitForm() {
-    const btn = document.getElementById('form-submit-btn');
-    const spinner = document.getElementById('form-submit-spinner');
-    const text = document.getElementById('form-submit-text');
+    const btn = $('form-submit-btn');
+    const spinner = $('form-submit-spinner');
+    const text = $('form-submit-text');
     btn.disabled = true; spinner.style.display = '';
     try {
       const data = this._getFormData();
@@ -914,8 +919,8 @@ const App = {
   },
 
   async submitAndSign() {
-    const btn = document.getElementById('form-submit-btn');
-    const spinner = document.getElementById('form-submit-spinner');
+    const btn = $('form-submit-btn');
+    const spinner = $('form-submit-spinner');
     btn.disabled = true; spinner.style.display = '';
     try {
       const data = this._getFormData();
@@ -960,8 +965,8 @@ const App = {
   },
 
   renderList(items) {
-    const container = document.getElementById('list-container');
-    const count = document.getElementById('list-count');
+    const container = $('list-container');
+    const count = $('list-count');
     if (!items.length) {
       count.textContent = 'Nessun intervento';
       container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px">Nessun intervento nel periodo selezionato</div>';
@@ -1029,10 +1034,10 @@ const App = {
 
   showDetail(itemJson, hasSig) {
     const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    document.getElementById('workspace')?.classList.remove('collapse-right');
+    $('workspace')?.classList.remove('collapse-right');
     this._currentItemId = { id: item.exchange_item_id, ck: item.change_key };
-    const empty = document.getElementById('detail-empty');
-    const fill = document.getElementById('detail-fill');
+    const empty = $('detail-empty');
+    const fill = $('detail-fill');
     if (empty) empty.style.display = 'none';
     if (!fill) return;
     fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
@@ -1040,11 +1045,11 @@ const App = {
   },
 
   clearDetail() {
-    const empty = document.getElementById('detail-empty');
-    const fill = document.getElementById('detail-fill');
+    const empty = $('detail-empty');
+    const fill = $('detail-fill');
     if (empty) empty.style.display = 'flex';
     if (fill) { fill.style.display = 'none'; fill.innerHTML = ''; }
-    document.getElementById('workspace')?.classList.add('collapse-right');
+    $('workspace')?.classList.add('collapse-right');
     this._currentItemId = null;
   },
 
@@ -1059,9 +1064,9 @@ const App = {
     this.openNewModal();
     this.fillForm(item);
     this.editingItem = null;
-    document.getElementById('form-title').textContent = 'Duplica intervento';
-    document.getElementById('form-submit-text').textContent = 'Crea intervento';
-    document.getElementById('form-sign-btn').style.display = 'none';
+    $('form-title').textContent = 'Duplica intervento';
+    $('form-submit-text').textContent = 'Crea intervento';
+    $('form-sign-btn').style.display = 'none';
   },
 
   async confirmDelete(itemJson) {
@@ -1078,7 +1083,7 @@ const App = {
 
   // ── Sync ──────────────────────────────────────────────────────────
   showSyncFeedback(message, type = 'success') {
-    const el = document.getElementById('sync-feedback');
+    const el = $('sync-feedback');
     if (!el) return;
     clearTimeout(this._syncFeedbackTimer);
     el.textContent = message;
@@ -1090,15 +1095,15 @@ const App = {
   async triggerSync() {
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (!primary) { toast('Nessun account', 'warning'); return; }
-    const btn = document.getElementById('sync-btn');
+    const btn = $('sync-btn');
     btn?.classList.add('syncing');
-    document.getElementById('sb-sync-text').textContent = 'Sincronizzazione…';
+    $('sb-sync-text').textContent = 'Sincronizzazione…';
     try {
       await invoke('trigger_sync', { email: primary.email });
       this.showSyncFeedback('Aggiornato');
     } catch(e) {
       this.showSyncFeedback('Errore sync', 'error');
-      document.getElementById('sb-sync-text').textContent = 'Errore sync';
+      $('sb-sync-text').textContent = 'Errore sync';
       toast('Sync error: ' + e, 'error');
     } finally { btn?.classList.remove('syncing'); }
   },
@@ -1131,10 +1136,10 @@ const App = {
     this._searchHistory = [];
     localStorage.setItem('gi_search_history', '[]');
     this.renderSearchHistory();
-    document.getElementById('global-search-input')?.focus();
+    $('global-search-input')?.focus();
   },
   renderSearchHistory() {
-    const box = document.getElementById('search-history');
+    const box = $('search-history');
     if (!box) return;
     const h = this._loadSearchHistory();
     if (!h.length) { box.innerHTML = '<div class="sh-empty">Nessuna ricerca recente</div>'; return; }
@@ -1145,7 +1150,7 @@ const App = {
       h.map(q => `<button class="sh-item" onmousedown="event.preventDefault()" onclick="App.useSearchHistory(${escHtml(JSON.stringify(q))})">${clock}<span>${escHtml(q)}</span></button>`).join('');
   },
   useSearchHistory(q) {
-    const input = document.getElementById('global-search-input');
+    const input = $('global-search-input');
     if (input) input.value = q;
     this.hideSearchHistory();
     this.saveSearch(q);
@@ -1153,11 +1158,11 @@ const App = {
   },
   showSearchHistory() {
     this.renderSearchHistory();
-    const box = document.getElementById('search-history');
+    const box = $('search-history');
     if (box && this._loadSearchHistory().length) box.classList.remove('hidden');
   },
   hideSearchHistory() {
-    setTimeout(() => document.getElementById('search-history')?.classList.add('hidden'), 120);
+    setTimeout(() => $('search-history')?.classList.add('hidden'), 120);
   },
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -1173,30 +1178,30 @@ const App = {
     this._firmaHasDraw = false;
 
     // Populate info bar
-    const clientEl = document.getElementById('sig-info-client');
-    const metaEl = document.getElementById('sig-info-meta');
+    const clientEl = $('sig-info-client');
+    const metaEl = $('sig-info-meta');
     if (clientEl) clientEl.textContent = item.ragione_sociale || '—';
     if (metaEl) {
       const dt = item.start_dt ? fmtDT(item.start_dt) : '—';
       const parts = [dt, item.nome_tecnico, item.descrizione_intervento].filter(Boolean);
       metaEl.textContent = parts.join(' · ');
     }
-    const legal = document.getElementById('sig-legal');
+    const legal = $('sig-legal');
     if (legal) legal.textContent = `Il cliente conferma il lavoro svolto con ${item.ragione_sociale || 'il cliente'}. Dopo la conferma, firma e timestamp vengono collegati al rapporto.`;
 
     // Reset checklist
-    const chk = document.getElementById('sig-check-firma');
+    const chk = $('sig-check-firma');
     if (chk) { chk.textContent = 'in attesa'; chk.style.color = 'var(--amber)'; }
 
     // Reset pen size buttons
     document.querySelectorAll('.sig-pen-size').forEach((b, i) => b.classList.toggle('on', i === 0));
 
-    document.getElementById('modal-firma').classList.remove('hidden', 'closing');
+    $('modal-firma').classList.remove('hidden', 'closing');
 
     // Init canvas after modal is visible
     requestAnimationFrame(() => {
-      const wrap = document.getElementById('sig-canvas-wrap');
-      const canvas = document.getElementById('firma-canvas');
+      const wrap = $('sig-canvas-wrap');
+      const canvas = $('firma-canvas');
       if (!wrap || !canvas) return;
       canvas.width = wrap.offsetWidth;
       canvas.height = wrap.offsetHeight;
@@ -1209,7 +1214,7 @@ const App = {
       this._firmaCtx = ctx;
       this._firmaDrawing = false;
 
-      const ph = document.getElementById('sig-canvas-placeholder');
+      const ph = $('sig-canvas-placeholder');
       if (ph) ph.style.display = '';
 
       const getPos = (e) => {
@@ -1232,7 +1237,7 @@ const App = {
         if (!this._firmaHasDraw) {
           this._firmaHasDraw = true;
           if (ph) ph.style.display = 'none';
-          const ck = document.getElementById('sig-check-firma');
+          const ck = $('sig-check-firma');
           if (ck) { ck.textContent = 'OK'; ck.style.color = 'var(--green)'; }
         }
       };
@@ -1241,12 +1246,12 @@ const App = {
   },
 
   firmaClear() {
-    const canvas = document.getElementById('firma-canvas');
+    const canvas = $('firma-canvas');
     if (this._firmaCtx) this._firmaCtx.clearRect(0, 0, canvas.width, canvas.height);
     this._firmaHasDraw = false;
-    const ph = document.getElementById('sig-canvas-placeholder');
+    const ph = $('sig-canvas-placeholder');
     if (ph) ph.style.display = '';
-    const chk = document.getElementById('sig-check-firma');
+    const chk = $('sig-check-firma');
     if (chk) { chk.textContent = 'in attesa'; chk.style.color = 'var(--amber)'; }
   },
 
@@ -1259,7 +1264,7 @@ const App = {
 
   async firmaConfirm() {
     if (!this._firmaHasDraw) { toast('Aggiungi la firma prima di confermare', 'warning'); return; }
-    const canvas = document.getElementById('firma-canvas');
+    const canvas = $('firma-canvas');
     const base64 = canvas.toDataURL('image/png').replace('data:image/png;base64,', '');
     try {
       await invoke('save_signature', { exchangeItemId: this._currentFirmaItem.exchange_item_id, pngBase64: base64 });
@@ -1279,23 +1284,23 @@ const App = {
       const mem = await invoke('get_client_email', { ragioneSociale: item.ragione_sociale });
       if (mem) { toVal = mem.to || ''; ccVal = mem.cc || ccVal; }
     } catch(e) {}
-    document.getElementById('modal-email-body').innerHTML = `
+    $('modal-email-body').innerHTML = `
       <div class="fg"><label class="fg-lbl">A</label><input class="fg-in" id="email-to" value="${toVal}" placeholder="destinatario@azienda.it"></div>
       <div class="fg"><label class="fg-lbl">CC</label><input class="fg-in" id="email-cc" value="${ccVal}"></div>
       <div class="fg"><label class="fg-lbl">Oggetto</label><input class="fg-in" id="email-subject" value="Report intervento — ${item.ragione_sociale || ''}"></div>
       <div class="fg"><label class="fg-lbl">Messaggio</label><textarea class="fg-ta" id="email-body" rows="4">Gentili,\n\nIn allegato il report dell'intervento del ${fmtDT(item.start_dt)}.\n\nCordiali saluti</textarea></div>
       <div style="font-size:11px;color:var(--text-3)">Il PDF dell'intervento verrà allegato automaticamente.</div>`;
-    document.getElementById('modal-email').classList.remove('hidden', 'closing');
+    $('modal-email').classList.remove('hidden', 'closing');
   },
 
   async emailSend() {
-    const to = document.getElementById('email-to')?.value.trim();
-    const cc = document.getElementById('email-cc')?.value.trim();
-    const subject = document.getElementById('email-subject')?.value;
-    const body = document.getElementById('email-body')?.value;
+    const to = $('email-to')?.value.trim();
+    const cc = $('email-cc')?.value.trim();
+    const subject = $('email-subject')?.value;
+    const body = $('email-body')?.value;
     if (!to) { toast('Destinatario obbligatorio', 'error'); return; }
-    document.getElementById('email-send-spinner').style.display = '';
-    document.getElementById('email-send-text').textContent = 'Invio…';
+    $('email-send-spinner').style.display = '';
+    $('email-send-text').textContent = 'Invio…';
     try {
       const item = this._currentEmailItem;
       const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
@@ -1312,15 +1317,15 @@ const App = {
     } catch(e) {
       toast('Errore invio: ' + e, 'error');
     } finally {
-      document.getElementById('email-send-spinner').style.display = 'none';
-      document.getElementById('email-send-text').textContent = 'Invia';
+      $('email-send-spinner').style.display = 'none';
+      $('email-send-text').textContent = 'Invia';
     }
   },
 
   // ── PDF modal ─────────────────────────────────────────────────────
   openPdfModal(itemJson) {
     this._currentPdfItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    document.getElementById('modal-pdf-body').innerHTML = `
+    $('modal-pdf-body').innerHTML = `
       <p style="color:var(--text-2);font-size:12px;margin-bottom:14px">Esporta il report PDF per: <strong>${this._currentPdfItem.ragione_sociale}</strong></p>
       <div class="fg">
         <label class="fg-lbl">Formato</label>
@@ -1329,14 +1334,14 @@ const App = {
           <option value="summary">Riepilogo</option>
         </select>
       </div>`;
-    document.getElementById('modal-pdf').classList.remove('hidden', 'closing');
+    $('modal-pdf').classList.remove('hidden', 'closing');
   },
 
   // ── Trasferta context menu ────────────────────────────────────────
   openContextMenu(e, itemJson) {
     e.preventDefault();
     this._ctxItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    const menu = document.getElementById('ctx-menu');
+    const menu = $('ctx-menu');
     menu.classList.remove('hidden', 'closing');
     const mw = 220, mh = 80;
     menu.style.left = Math.min(e.clientX + 2, window.innerWidth  - mw - 8) + 'px';
@@ -1357,9 +1362,9 @@ const App = {
     this._trasfertaMode = mode;
     const item = this._ctxItem;
     if (!item) return;
-    document.getElementById('trasferta-title').textContent =
+    $('trasferta-title').textContent =
       mode === 'before' ? 'Trasferta prima' : 'Trasferta dopo';
-    const ref = document.getElementById('trasferta-ref');
+    const ref = $('trasferta-ref');
     if (ref) {
       const dt = item.start_dt ? fmtDT(item.start_dt) : '—';
       const endDt = item.end_dt ? fmtDT(item.end_dt) : '';
@@ -1368,16 +1373,16 @@ const App = {
         : `Inizio: <strong>${endDt || dt}</strong>`;
       ref.innerHTML = `<strong>${item.ragione_sociale || '—'}</strong> · ${when}`;
     }
-    const dl = document.getElementById('trasferta-luogo-list');
+    const dl = $('trasferta-luogo-list');
     if (dl) {
       const luoghi = this._dropdownData?.luoghi || [];
       dl.innerHTML = luoghi.map(l => `<option value="${escHtml(l)}">`).join('');
     }
-    document.getElementById('trasferta-luogo').value = '';
-    document.getElementById('trasferta-durata').value = 30;
+    $('trasferta-luogo').value = '';
+    $('trasferta-durata').value = 30;
     this._updateTrasfertaDurata(30);
-    document.getElementById('modal-trasferta').classList.remove('hidden', 'closing');
-    setTimeout(() => document.getElementById('trasferta-luogo').focus(), 80);
+    $('modal-trasferta').classList.remove('hidden', 'closing');
+    setTimeout(() => $('trasferta-luogo').focus(), 80);
   },
 
   openTrasfertaForDetail(itemJson) {
@@ -1387,19 +1392,19 @@ const App = {
   },
 
   _updateTrasfertaDurata(val) {
-    const el = document.getElementById('trasferta-durata');
+    const el = $('trasferta-durata');
     const min = parseInt(el.min), max = parseInt(el.max);
     const pct = ((parseInt(val) - min) / (max - min) * 100).toFixed(1);
     el.style.setProperty('--fill', pct + '%');
-    document.getElementById('trasferta-durata-val').textContent = durMinToStr(parseInt(val));
+    $('trasferta-durata-val').textContent = durMinToStr(parseInt(val));
   },
 
   async _confirmTrasferta() {
     const item = this._ctxItem;
     const mode = this._trasfertaMode;
     if (!item || !mode) return;
-    const luogo = document.getElementById('trasferta-luogo').value.trim();
-    const dur = parseInt(document.getElementById('trasferta-durata').value);
+    const luogo = $('trasferta-luogo').value.trim();
+    const dur = parseInt($('trasferta-durata').value);
     const refStart = new Date(item.start_dt);
     const refEnd = item.end_dt ? new Date(item.end_dt) : new Date(refStart.getTime() + 3600000);
     let start, end;
@@ -1426,7 +1431,7 @@ const App = {
       altro: null,
       body_html: null,
     };
-    const btn = document.getElementById('trasferta-confirm-btn');
+    const btn = $('trasferta-confirm-btn');
     if (btn) btn.disabled = true;
     try {
       await invoke('create_intervention', { data });

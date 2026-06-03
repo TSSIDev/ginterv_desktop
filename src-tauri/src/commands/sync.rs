@@ -1,6 +1,5 @@
 use crate::db::cache;
 use crate::exchange::client::EwsClient;
-use crate::keychain;
 use crate::sync::{self, SyncStatus, SyncStatusMap};
 use crate::AppState;
 use std::sync::Arc;
@@ -24,8 +23,7 @@ pub async fn trigger_sync(
 
     let server = acc.server.unwrap_or_default();
     let domain = acc.domain;
-    let pw = keychain::load_password(&email).map_err(|e| e.to_string())?;
-    let client = EwsClient::new(&server, &email, &pw, domain.as_deref()).map_err(|e| e.to_string())?;
+    let client = EwsClient::connect(&server, &email, domain.as_deref()).map_err(|e| e.to_string())?;
 
     {
         let mut map = sync_status.lock().map_err(|e| e.to_string())?;

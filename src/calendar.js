@@ -98,9 +98,9 @@ const Calendar = (() => {
     const d = new Date(isoDate + 'T00:00:00');
     const dateStr = `${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
     const timeStr = `${hm(sh, sm)} – ${hm(eh, em)}`;
-    const info = document.getElementById('cal-cm-info');
+    const info = $('cal-cm-info');
     if (info) info.innerHTML = `<div class="cal-cm-date">${dateStr}</div><div class="cal-cm-time">${timeStr}</div>`;
-    const modal = document.getElementById('cal-create-modal');
+    const modal = $('cal-create-modal');
     if (!modal) return;
     modal.classList.remove('hidden', 'closing');
     const mw = 230, mh = 130;
@@ -110,7 +110,7 @@ const Calendar = (() => {
   }
 
   function _onCreateOutsideDown(e) {
-    const modal = document.getElementById('cal-create-modal');
+    const modal = $('cal-create-modal');
     if (!modal || modal.classList.contains('hidden') || modal.contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -209,15 +209,15 @@ const Calendar = (() => {
     } else {
       text = `${MONTHS[miniDate.getMonth()]} ${miniDate.getFullYear()}`;
     }
-    const el = document.getElementById('cal-range-lbl');
+    const el = $('cal-range-lbl');
     if (el) el.textContent = text;
   }
 
   function renderMini() {
     const y = miniDate.getFullYear(), mo = miniDate.getMonth();
-    const titleEl = document.getElementById('cal-mini-title');
+    const titleEl = $('cal-mini-title');
     if (titleEl) titleEl.textContent = `${MONTHS_S[mo]} ${y}`;
-    const grid = document.getElementById('cal-mini-grid');
+    const grid = $('cal-mini-grid');
     if (!grid) return;
     const fd = (new Date(y, mo, 1).getDay() + 6) % 7;
     const dm = new Date(y, mo + 1, 0).getDate();
@@ -252,7 +252,7 @@ const Calendar = (() => {
   }
 
   function renderSidebar() {
-    const el = document.getElementById('sidebar-accounts');
+    const el = $('sidebar-accounts');
     if (!el) return;
 
     const allItems = getDisplayItems();
@@ -340,7 +340,7 @@ const Calendar = (() => {
         <div class="wkh-num">${d.getDate()}</div>
       </div>`;
     }
-    document.getElementById('cal-wk-head').innerHTML = head;
+    $('cal-wk-head').innerHTML = head;
 
     // Grid
     let lbls = '';
@@ -391,10 +391,10 @@ const Calendar = (() => {
       days += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')">${lines}${blocks}${nowLine}</div>`;
     }
 
-    const inner = document.getElementById('cal-tgrid-inner');
+    const inner = $('cal-tgrid-inner');
     inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${days}</div>`;
 
-    const wrap = document.getElementById('cal-tgrid-wrap');
+    const wrap = $('cal-tgrid-wrap');
     if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
   }
 
@@ -410,7 +410,7 @@ const Calendar = (() => {
       : ['all'];
 
     // Header
-    const headEl = document.getElementById('cal-day-head');
+    const headEl = $('cal-day-head');
     if (headEl) {
       if (showTechHeader && daySiglas.length) {
         let head = '<div class="day-gutter"></div>';
@@ -467,10 +467,10 @@ const Calendar = (() => {
       cols += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(currentDay)}')">${lines}${blocks}${nowLine}</div>`;
     });
 
-    const inner = document.getElementById('cal-day-inner');
+    const inner = $('cal-day-inner');
     inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${cols}</div>`;
 
-    const wrap = document.getElementById('cal-day-wrap');
+    const wrap = $('cal-day-wrap');
     if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
   }
 
@@ -481,7 +481,7 @@ const Calendar = (() => {
 
     // Day-of-week header
     const dows = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
-    document.getElementById('cal-mth-head').innerHTML =
+    $('cal-mth-head').innerHTML =
       dows.map(d => `<div class="mth-dow-hdr">${d}</div>`).join('');
 
     const fd = (new Date(y, mo, 1).getDay() + 6) % 7;
@@ -520,14 +520,14 @@ const Calendar = (() => {
         <div class="mth-dnum">${d.getDate()}</div>${pills}
       </div>`;
     }
-    document.getElementById('cal-mth-grid').innerHTML = cells;
+    $('cal-mth-grid').innerHTML = cells;
   }
 
   // ── Detail panel ─────────────────────────────────────────────────────
 
   function renderDetail(item) {
-    const empty = document.getElementById('detail-empty');
-    const fill = document.getElementById('detail-fill');
+    const empty = $('detail-empty');
+    const fill = $('detail-fill');
     if (!item) {
       if (empty) empty.style.display = 'flex';
       if (fill) { fill.style.display = 'none'; fill.innerHTML = ''; }
@@ -543,8 +543,8 @@ const Calendar = (() => {
 
   function renderMonthDayDetail(date) {
     const items = getFilteredItems().filter(i => sameD(i.startD, date));
-    const empty = document.getElementById('detail-empty');
-    const fill = document.getElementById('detail-fill');
+    const empty = $('detail-empty');
+    const fill = $('detail-fill');
     if (empty) empty.style.display = 'none';
     if (!fill) return;
     fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
@@ -580,7 +580,7 @@ const Calendar = (() => {
     syncViewButtons();
     renderRangeLabel();
     renderSidebar();
-    const hint = document.getElementById('cal-empty-hint');
+    const hint = $('cal-empty-hint');
     if (hint) {
       const empty = !getFilteredItems().length;
       hint.style.display = empty ? 'block' : 'none';
@@ -594,19 +594,19 @@ const Calendar = (() => {
       }
     }
     if (currentView === 'week') {
-      document.getElementById('cal-week-view').style.display = 'flex';
-      document.getElementById('cal-day-view').style.display = 'none';
-      document.getElementById('cal-month-view').style.display = 'none';
+      $('cal-week-view').style.display = 'flex';
+      $('cal-day-view').style.display = 'none';
+      $('cal-month-view').style.display = 'none';
       renderWeek();
     } else if (currentView === 'day') {
-      document.getElementById('cal-week-view').style.display = 'none';
-      document.getElementById('cal-day-view').style.display = 'flex';
-      document.getElementById('cal-month-view').style.display = 'none';
+      $('cal-week-view').style.display = 'none';
+      $('cal-day-view').style.display = 'flex';
+      $('cal-month-view').style.display = 'none';
       renderDay();
     } else {
-      document.getElementById('cal-week-view').style.display = 'none';
-      document.getElementById('cal-day-view').style.display = 'none';
-      document.getElementById('cal-month-view').style.display = 'flex';
+      $('cal-week-view').style.display = 'none';
+      $('cal-day-view').style.display = 'none';
+      $('cal-month-view').style.display = 'flex';
       renderMonth();
     }
   }
@@ -662,7 +662,7 @@ const Calendar = (() => {
       selectedItem = null;
       App.clearDetail();
       renderAll();
-      const shown = document.getElementById(`cal-${view}-view`);
+      const shown = $(`cal-${view}-view`);
       if (shown) {
         const cls = zoomIn ? 'cal-zoom-in' : 'cal-zoom-out';
         shown.classList.remove('cal-zoom-in', 'cal-zoom-out');

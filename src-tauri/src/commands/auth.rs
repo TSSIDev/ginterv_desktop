@@ -28,10 +28,7 @@ pub async fn test_connection(
     let end = now.format("%Y-%m-%dT23:59:59Z").to_string();
     let soap_body = soap::find_items(&email, &start, &end);
 
-    match client.call(
-        "http://schemas.microsoft.com/exchange/services/2006/messages/FindItem",
-        &soap_body,
-    ) {
+    match client.call_action("FindItem", &soap_body) {
         Ok(resp) => {
             if resp.contains("NoError") || resp.contains("RootFolder") {
                 Ok(ConnectionResult { ok: true, error: None })
