@@ -1415,3 +1415,20 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   .settings-body { padding: 16px 18px; border-top-left-radius: 0; }
   .st-setting-row { grid-template-columns: 1fr; align-items: start; }
 }
+
+/* ── Optimistic write: pending badge + conflict diff ─────────────────── */
+.pending-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; color: var(--text-3);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+}
+.cf-item { padding: 12px 0; border-bottom: 1px solid var(--line, rgba(0,0,0,.08)); }
+.cf-item:last-child { border-bottom: 0; }
+.cf-title { font-weight: 700; margin-bottom: 8px; }
+.cf-diff { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cf-diff th, .cf-diff td { text-align: left; padding: 4px 8px; vertical-align: top; }
+.cf-k { color: var(--text-3); white-space: nowrap; }
+.cf-mine { color: var(--accent); }
+.cf-srv { color: var(--text-2); }
+.cf-actions { display: flex; gap: 8px; margin-top: 10px; }
+.cf-nodiff { color: var(--text-3); font-size: 12px; }

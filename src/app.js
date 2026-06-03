@@ -68,6 +68,14 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Badge shown on items with an unsynced local change (optimistic write).
+function pendingBadge(item) {
+  if (!item || !item.pending_op) return '';
+  const label = item.pending_op === 'delete' ? 'eliminazione…'
+    : item.pending_op === 'create' ? 'in invio…' : 'modifica…';
+  return `<span class="pending-badge">${label}</span>`;
+}
+
 function GIIcon(name, size = 12) {
   const attrs = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
   const paths = {
@@ -490,7 +498,7 @@ function renderInterventionDetail(item, opts = {}) {
 
   return `
     <div class="detail-head">
-      <div class="dh-eye">Intervento · ${dateStr}</div>
+      <div class="dh-eye">Intervento · ${dateStr}${pendingBadge(item)}</div>
       <div class="dh-client">${escHtml(item.ragione_sociale || '—')}</div>
       ${item.descrizione ? `<div class="dh-type">${escHtml(item.descrizione)}</div>` : ''}
       ${item.altro ? `<div class="dh-altro">${escHtml(item.altro)}</div>` : ''}
@@ -595,6 +603,9 @@ const App = {
       this.loadInterventions();
     });
 
+    listenEvent('flush-complete', () => this.loadInterventions());
+    listenEvent('write-conflict', () => this.checkConflicts());
+
     // Seamless freshness: keep the relative "Sincronizzato N fa" label live,
     // and resync when the user returns to the app or the network comes back —
     // so reopening the window shows fresh data without hitting the sync button.
@@ -625,6 +636,7 @@ const App = {
     this.navigate('calendar');
     this.clearDetail();
     this.loadInterventions();
+    this.checkConflicts();
     // Set current account in statusbar
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (primary) $('sb-account').textContent = primary.email;
@@ -1033,7 +1045,7 @@ const App = {
         <div class="iv-body">
           <div class="iv-top">
             <div class="iv-sigla" style="background:color-mix(in oklch, ${color} 18%, transparent);color:${color}">${escHtml(item.nome_tecnico || '—')}</div>
-            <div class="iv-cliente">${escHtml(item.ragione_sociale || '—')}</div>
+            <div class="iv-cliente">${escHtml(item.ragione_sociale || '—')}${pendingBadge(item)}</div>
           </div>
           ${detail ? `<div class="iv-desc">${escHtml(detail)}</div>` : ''}
           <div class="iv-meta">${metaHtml}</div>
@@ -1114,7 +1126,10 @@ const App = {
   // Resync when the window regains focus / the PC wakes / the network returns.
   // `force` (network back online) always syncs; otherwise only when stale.
   maybeSyncOnFocus(force = false) {
-    if (this._syncing || !this.accounts?.length) return;
+    if (!this.accounts?.length) return;
+    const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
+    if (primary) invoke('flush_queue', { email: primary.email }).catch(() => {});
+    if (this._syncing) return;
     if (!force && this._lastSyncAt && Date.now() - this._lastSyncAt < this._SYNC_FOCUS_STALE_MS) return;
     this.triggerSync();
   },
@@ -1154,6 +1169,57 @@ const App = {
       btn?.classList.remove('syncing');
       this._renderFreshness();
     }
+  },
+
+  // ── Conflicts ─────────────────────────────────────────────────────
+  async checkConflicts() {
+    const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
+    if (!primary) return;
+    let conflicts = [];
+    try { conflicts = await invoke('list_conflicts', { email: primary.email }); } catch(e) { return; }
+    if (!conflicts.length) { $('modal-conflict')?.classList.add('hidden'); return; }
+    this._renderConflicts(conflicts);
+    $('modal-conflict')?.classList.remove('hidden', 'closing');
+  },
+
+  _renderConflicts(conflicts) {
+    const FIELDS = [
+      ['subject', 'Oggetto'], ['start_dt', 'Inizio'], ['end_dt', 'Fine'],
+      ['luogo', 'Luogo'], ['ragione_sociale', 'Cliente'], ['descrizione', 'Descrizione'],
+      ['durata', 'Durata'], ['body_html', 'Note'],
+    ];
+    const blocks = conflicts.map(c => {
+      const mine = c.mine || {}, srv = c.server || {};
+      const rows = FIELDS.filter(([k]) => (mine[k] || '') !== (srv[k] || '')).map(([k, label]) =>
+        `<tr><td class="cf-k">${label}</td>
+             <td class="cf-mine">${escHtml(mine[k] || '—')}</td>
+             <td class="cf-srv">${escHtml(srv[k] || '—')}</td></tr>`
+      ).join('');
+      const diff = rows
+        ? `<table class="cf-diff"><thead><tr><th></th><th>Le mie modifiche</th><th>Versione server</th></tr></thead><tbody>${rows}</tbody></table>`
+        : `<p class="cf-nodiff">Differenze non mostrabili (item eliminato sul server).</p>`;
+      return `<div class="cf-item">
+        <div class="cf-title">${escHtml((c.mine && c.mine.subject) || c.op_type)}</div>
+        ${diff}
+        <div class="cf-actions">
+          <button class="btn" onclick="App.resolveConflict(${c.op_id}, 'mine')">Tieni le mie modifiche</button>
+          <button class="btn ghost" onclick="App.resolveConflict(${c.op_id}, 'server')">Tieni versione server</button>
+        </div>
+      </div>`;
+    }).join('');
+    $('conflict-body').innerHTML = blocks;
+  },
+
+  async resolveConflict(opId, choice) {
+    const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
+    try {
+      await invoke('resolve_conflict', { opId, choice, email: primary.email });
+      toast('Conflitto risolto', 'success');
+    } catch(e) {
+      toast('Errore risoluzione: ' + e, 'error');
+    }
+    this.loadInterventions();
+    this.checkConflicts();
   },
 
   onSearchInput(val) {
@@ -1326,6 +1392,10 @@ const App = {
   async openEmailModal(itemJson) {
     this._currentEmailItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     const item = this._currentEmailItem;
+    if (item.exchange_item_id && item.exchange_item_id.startsWith('tmp-')) {
+      toast('Intervento non ancora sincronizzato', 'warning');
+      return;
+    }
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     let toVal = '', ccVal = primary?.email || '';
     try {
@@ -1497,6 +1567,10 @@ const App = {
   async pdfExport() {
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     const item = this._currentPdfItem;
+    if (item.exchange_item_id && item.exchange_item_id.startsWith('tmp-')) {
+      toast('Intervento non ancora sincronizzato', 'warning');
+      return;
+    }
     try {
       const bytes = await invoke('export_pdf', { email: primary?.email, itemId: item.exchange_item_id, changeKey: item.change_key });
       // Trigger download

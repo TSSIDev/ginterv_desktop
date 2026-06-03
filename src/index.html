@@ -538,11 +538,21 @@
   </div>
 </div>
 
+<div class="modal-overlay hidden" id="modal-conflict">
+  <div class="modal" style="width:620px">
+    <div class="modal-head">
+      <span class="modal-title">Conflitto di sincronizzazione</span>
+      <button class="modal-close" onclick="App.closeModal('conflict')" aria-label="Chiudi">×</button>
+    </div>
+    <div class="modal-body" id="conflict-body"></div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="vendor/purify.min.js?v=1"></script>
 <script src="search.js?v=8"></script>
 <script src="settings.js?v=12"></script>
 <script src="calendar.js?v=24"></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>
