@@ -20,6 +20,7 @@ pub fn run(conn: &Connection) -> Result<()> {
             trasferta         TEXT,
             durata            TEXT,
             body_html         TEXT,
+            luogo             TEXT,
             schema_version    INTEGER NOT NULL DEFAULT 1,
             synced_at         TEXT NOT NULL,
             UNIQUE(user_email, exchange_item_id)
@@ -47,5 +48,11 @@ pub fn run(conn: &Connection) -> Result<()> {
             value TEXT
         );
         ",
-    )
+    )?;
+    // Add luogo column to existing DBs (ignored if already present)
+    conn.execute(
+        "ALTER TABLE intervention_cache ADD COLUMN luogo TEXT",
+        [],
+    ).ok();
+    Ok(())
 }

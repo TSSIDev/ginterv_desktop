@@ -371,11 +371,45 @@ fn draw_notes(
     cy + 3.0
 }
 
+fn draw_sig_image(
+    layer: &PdfLayerReference,
+    png_bytes: &[u8],
+    x: f32,
+    sig_top: f32,
+    half_w: f32,
+) {
+    if let Ok(img) = ::image::load_from_memory(png_bytes) {
+        let (pw, ph) = img.dimensions();
+        if pw > 0 && ph > 0 {
+            let w_mm = half_w * 0.8_f32;
+            let h_mm = (w_mm * (ph as f32 / pw as f32)).min(18.0);
+            let img_x = x + (half_w - w_mm) / 2.0;
+            let img_y_bottom = PH - (sig_top + 4.0 + h_mm);
+            let dpi = 96.0_f32;
+            let scale_x = w_mm * dpi / (pw as f32 * 25.4);
+            let scale_y = h_mm * dpi / (ph as f32 * 25.4);
+            let pdf_img = Image::from_dynamic_image(&img);
+            pdf_img.add_to_layer(
+                layer.clone(),
+                ImageTransform {
+                    translate_x: Some(Mm(img_x)),
+                    translate_y: Some(Mm(img_y_bottom)),
+                    scale_x: Some(scale_x),
+                    scale_y: Some(scale_y),
+                    dpi: Some(dpi),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
+
 fn draw_signatures(
     layer: &PdfLayerReference,
     font: &IndirectFontRef,
     font_bold: &IndirectFontRef,
-    sig_png: Option<Vec<u8>>,
+    client_sig_png: Option<Vec<u8>>,
+    tech_sig_png: Option<Vec<u8>>,
     tecnico: Option<&str>,
 ) {
     let firma_top = PH - 16.0 - 42.0; // footer 16mm + firma area 42mm
@@ -389,41 +423,16 @@ fn draw_signatures(
 
     // Technician label
     layer.set_fill_color(rgb(C_GRAY));
-    text_at(
-        layer,
-        font,
-        tecnico.unwrap_or("Tecnico"),
-        x_l,
-        sig_top,
-        8.0,
-    );
+    text_at(layer, font, tecnico.unwrap_or("Tecnico"), x_l, sig_top, 8.0);
 
-    // Client signature image if available
-    if let Some(png_bytes) = sig_png {
-        if let Ok(img) = ::image::load_from_memory(&png_bytes) {
-            let (pw, ph) = img.dimensions();
-            if pw > 0 && ph > 0 {
-                let w_mm = half_w * 0.8_f32;
-                let h_mm = w_mm * (ph as f32 / pw as f32);
-                let img_x = x_r + (half_w - w_mm) / 2.0;
-                let img_y_bottom = PH - (sig_top + 5.0 + h_mm);
-                let dpi = 96.0_f32;
-                let scale_x = w_mm * dpi / (pw as f32 * 25.4);
-                let scale_y = h_mm * dpi / (ph as f32 * 25.4);
-                let pdf_img = Image::from_dynamic_image(&img);
-                pdf_img.add_to_layer(
-                    layer.clone(),
-                    ImageTransform {
-                        translate_x: Some(Mm(img_x)),
-                        translate_y: Some(Mm(img_y_bottom)),
-                        scale_x: Some(scale_x),
-                        scale_y: Some(scale_y),
-                        dpi: Some(dpi),
-                        ..Default::default()
-                    },
-                );
-            }
-        }
+    // Tech signature image (left)
+    if let Some(ref png_bytes) = tech_sig_png {
+        draw_sig_image(layer, png_bytes, x_l, sig_top + 2.0, half_w);
+    }
+
+    // Client signature image (right)
+    if let Some(ref png_bytes) = client_sig_png {
+        draw_sig_image(layer, png_bytes, x_r, sig_top + 2.0, half_w);
     }
 
     // Signature lines
@@ -447,14 +456,7 @@ fn draw_signatures(
     // Labels below lines
     layer.set_fill_color(rgb(C_GRAY));
     text_at(layer, font, "Firma tecnico", x_l + 10.0, line_y + 2.0, 7.5);
-    text_at(
-        layer,
-        font,
-        "Firma e timbro del cliente",
-        x_r + 5.0,
-        line_y + 2.0,
-        7.5,
-    );
+    text_at(layer, font, "Firma e timbro del cliente", x_r + 5.0, line_y + 2.0, 7.5);
 }
 
 fn draw_footer(layer: &PdfLayerReference, font: &IndirectFontRef) {
@@ -468,7 +470,7 @@ fn draw_footer(layer: &PdfLayerReference, font: &IndirectFontRef) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-pub fn generate_single(item: &CachedItem, sig_png: Option<Vec<u8>>) -> Result<Vec<u8>> {
+pub fn generate_single(item: &CachedItem, sig_png: Option<Vec<u8>>, tech_sig_png: Option<Vec<u8>>) -> Result<Vec<u8>> {
     let (doc, page_idx, layer_idx) =
         PdfDocument::new("Rapporto Intervento", Mm(PW), Mm(PH), "Layer 1");
 
@@ -490,7 +492,7 @@ pub fn generate_single(item: &CachedItem, sig_png: Option<Vec<u8>>) -> Result<Ve
     }
     let _ = cy;
 
-    draw_signatures(&layer, &font, &font_bold, sig_png, item.nome_tecnico.as_deref());
+    draw_signatures(&layer, &font, &font_bold, sig_png, tech_sig_png, item.nome_tecnico.as_deref());
     draw_footer(&layer, &font);
 
     Ok(doc.save_to_bytes()?)

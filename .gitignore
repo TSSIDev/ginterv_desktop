@@ -1,0 +1,21 @@
+# Rust / Tauri build
+/src-tauri/target/
+target/
+
+# Node
+node_modules/
+dist/
+
+# Agent tooling / scratch
+.agents/
+.claude/
+.impeccable/
+skills-lock.json
+todo.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

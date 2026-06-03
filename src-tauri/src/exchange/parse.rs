@@ -21,6 +21,7 @@ pub struct InterventionItem {
     pub trasferta: String,
     pub durata: String,
     pub body_html: String,
+    pub luogo: String,
 }
 
 /// Simple XML text extractor: returns the text content of the first element matching `tag_local`.
@@ -131,6 +132,7 @@ pub fn parse_find_items(xml: &str) -> Result<Vec<InterventionItem>> {
                     "End" => capture_next_text = Some("end_dt".to_string()),
                     "Subject" => capture_next_text = Some("subject".to_string()),
                     "Body" => capture_next_text = Some("body_html".to_string()),
+                    "Location" => capture_next_text = Some("location".to_string()),
                     _ => {}
                 }
             }
@@ -180,7 +182,22 @@ pub fn parse_find_items(xml: &str) -> Result<Vec<InterventionItem>> {
                 tag_stack.pop();
                 match local.as_str() {
                     "CalendarItem" | "Item" => {
-                        if let Some(item) = current.take() {
+                        if let Some(mut item) = current.take() {
+                            // Fallback: if extended props missing, parse from subject
+                            // (mirrors _parse_subject fallback in exchange_service.py)
+                            if item.nome_tecnico.is_empty() && !item.subject.is_empty() {
+                                let p = super::subject::parse_subject(&item.subject);
+                                item.nome_tecnico    = p.nome_tecnico;
+                                item.ragione_sociale = p.ragione_sociale;
+                                item.descrizione     = p.descrizione;
+                                item.altro           = p.altro;
+                                if item.tipo_tariffa.is_empty() {
+                                    item.tipo_tariffa = p.tipo_tariffa;
+                                }
+                                if item.tipo_fatturazione.is_empty() {
+                                    item.tipo_fatturazione = p.tipo_fatturazione;
+                                }
+                            }
                             if !item.exchange_item_id.is_empty() {
                                 items.push(item);
                             }
@@ -275,6 +292,7 @@ fn fill_field(item: &mut InterventionItem, field: &str, value: &str) {
         "end_dt" => item.end_dt = value.to_string(),
         "subject" => item.subject = value.to_string(),
         "body_html" => item.body_html = value.to_string(),
+        "location" => item.luogo = value.to_string(),
         _ => {}
     }
 }

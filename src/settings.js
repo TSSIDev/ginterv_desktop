@@ -13,6 +13,7 @@ const Settings = {
   _dropdownData: {},
   _techSigB64: null,
   _syncInterval: 15,
+  _syncWindow: 90,
 
   async onNavigate() {
     this._section = 'account';
@@ -21,16 +22,18 @@ const Settings = {
     const email = (this._accounts[0] || {}).email || '';
 
     // Load all async data at once — navigation is then fully synchronous
-    const [dd, sig, interval, concurrency] = await Promise.all([
+    const [dd, sig, interval, concurrency, window] = await Promise.all([
       invoke('get_dropdown_data').catch(() => ({})),
       email ? invoke('get_config_value', { key: 'tech_signature_' + email }).catch(() => null) : Promise.resolve(null),
       invoke('get_config_value', { key: 'sync_interval_minutes' }).catch(() => null),
       invoke('get_config_value', { key: 'sync_fetch_concurrency' }).catch(() => null),
+      invoke('get_config_value', { key: 'sync_window_days' }).catch(() => null),
     ]);
     this._dropdownData = dd || {};
     this._techSigB64   = sig || null;
     this._syncInterval = interval ? parseInt(interval) : 15;
     this._syncConcurrency = concurrency ? parseInt(concurrency) : 6;
+    this._syncWindow = window ? parseInt(window) : 90;
 
     this._render();
   },
@@ -362,6 +365,11 @@ const Settings = {
   _renderSync(body) {
     const interval = this._syncInterval;
     const concurrency = this._syncConcurrency;
+    const window = this._syncWindow;
+    const windowOpts = [
+      [30, '30 giorni'], [90, '90 giorni'], [180, '6 mesi'],
+      [365, '1 anno'], [730, '2 anni'], [3650, 'Tutto'],
+    ];
     body.innerHTML = `
       <div class="st-section-hdr">Intervallo sincronizzazione</div>
       <div class="fg" style="max-width:280px;margin-top:4px">
@@ -369,6 +377,16 @@ const Settings = {
         <select class="fg-in" id="st-sync-interval" onchange="Settings._saveInterval()">
           ${[5, 10, 15, 30, 60].map(m =>
             `<option value="${m}"${interval === m ? ' selected' : ''}>${m} minuti</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="st-section-hdr" style="margin-top:24px">Periodo sincronizzato</div>
+      <div class="st-section-desc">Quanto indietro e in avanti rispetto a oggi scaricare gli interventi. Periodi ampi mostrano più storico ma rendono il primo sync più lento.</div>
+      <div class="fg" style="max-width:280px;margin-top:4px">
+        <label class="fg-lbl">Range (passato e futuro)</label>
+        <select class="fg-in" id="st-sync-window" onchange="Settings._saveWindow()">
+          ${windowOpts.map(([d, lbl]) =>
+            `<option value="${d}"${window === d ? ' selected' : ''}>${lbl}</option>`
           ).join('')}
         </select>
       </div>
@@ -403,6 +421,23 @@ const Settings = {
       await invoke('set_config_value', { key: 'sync_interval_minutes', value: val });
       this._syncInterval = parseInt(val);
       toast('Intervallo salvato', 'success');
+    } catch(e) {
+      toast('Errore: ' + e, 'error');
+    }
+  },
+
+  async _saveWindow() {
+    const sel = $('st-sync-window');
+    if (!sel) return;
+    const val = sel.value;
+    try {
+      await invoke('set_config_value', { key: 'sync_window_days', value: val });
+      this._syncWindow = parseInt(val);
+      if (val === '3650') {
+        toast('Periodo "Tutto" salvato — il prossimo sync sarà più lento', 'info');
+      } else {
+        toast('Periodo salvato', 'success');
+      }
     } catch(e) {
       toast('Errore: ' + e, 'error');
     }

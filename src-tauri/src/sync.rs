@@ -8,9 +8,23 @@ use std::time::Duration;
 use tauri::Emitter;
 
 const SYNC_INTERVAL_SECS: u64 = 900; // 15 min
-const SYNC_WINDOW_DAYS: i64 = 90;
+const SYNC_WINDOW_DAYS: i64 = 90; // default half-window (each side of today)
+const SYNC_WINDOW_DAYS_MAX: i64 = 3650; // "Tutto" = ±10 years, EWS practical bound
 const FETCH_CONCURRENCY: usize = 6; // default parallel GetItem round-trips per sync
 const FETCH_CONCURRENCY_MAX: usize = 32; // clamp to avoid hammering Exchange
+
+/// Read the configured sync half-window in days, clamped to 1..=SYNC_WINDOW_DAYS_MAX.
+fn sync_window_days(state: &Arc<AppState>) -> i64 {
+    let configured = state
+        .db
+        .0
+        .lock()
+        .ok()
+        .and_then(|conn| cache::get_config(&conn, "sync_window_days").ok().flatten())
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(SYNC_WINDOW_DAYS);
+    configured.clamp(1, SYNC_WINDOW_DAYS_MAX)
+}
 
 /// Read the configured GetItem concurrency, clamped to 1..=FETCH_CONCURRENCY_MAX.
 fn fetch_concurrency(state: &Arc<AppState>) -> usize {
@@ -49,10 +63,11 @@ pub async fn sync_account(
     window: Option<&tauri::AppHandle>,
 ) -> anyhow::Result<i64> {
     let now = chrono::Utc::now();
-    let start = (now - chrono::Duration::days(SYNC_WINDOW_DAYS))
+    let window_days = sync_window_days(state);
+    let start = (now - chrono::Duration::days(window_days))
         .format("%Y-%m-%dT00:00:00Z")
         .to_string();
-    let end = (now + chrono::Duration::days(SYNC_WINDOW_DAYS))
+    let end = (now + chrono::Duration::days(window_days))
         .format("%Y-%m-%dT23:59:59Z")
         .to_string();
 

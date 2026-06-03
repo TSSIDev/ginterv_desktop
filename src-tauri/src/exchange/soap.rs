@@ -85,6 +85,7 @@ pub struct CreateItemData<'a> {
     pub start: &'a str,
     pub end: &'a str,
     pub body_html: &'a str,
+    pub location: &'a str,
     pub nome_tecnico: &'a str,
     pub ragione_sociale: &'a str,
     pub descrizione: &'a str,
@@ -137,6 +138,7 @@ pub fn create_item(d: &CreateItemData) -> String {
           <t:Body BodyType="HTML">{body_html}</t:Body>
           <t:Start>{start}</t:Start>
           <t:End>{end}</t:End>
+          <t:Location>{location}</t:Location>
           {ext}
         </t:CalendarItem>
       </m:Items>
@@ -146,6 +148,7 @@ pub fn create_item(d: &CreateItemData) -> String {
         body_html = xml_escape(d.body_html),
         start = d.start,
         end = d.end,
+        location = xml_escape(d.location),
         ext = ext_props_xml(d),
     );
     soap_envelope(&body)
@@ -170,11 +173,16 @@ pub fn update_item(item_id: &str, change_key: &str, d: &CreateItemData) -> Strin
             <t:FieldURI FieldURI="calendar:End"/>
             <t:CalendarItem><t:End>{end}</t:End></t:CalendarItem>
           </t:SetItemField>
+          <t:SetItemField>
+            <t:FieldURI FieldURI="calendar:Location"/>
+            <t:CalendarItem><t:Location>{location}</t:Location></t:CalendarItem>
+          </t:SetItemField>
           {ext_updates}"#,
         subject = xml_escape(d.subject),
         body_html = xml_escape(d.body_html),
         start = d.start,
         end = d.end,
+        location = xml_escape(d.location),
         ext_updates = ext_set_fields(d),
     );
 

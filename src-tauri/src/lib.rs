@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod exchange;
 pub mod keychain;
+pub mod ntlm;
 pub mod pdf;
 pub mod sync;
 

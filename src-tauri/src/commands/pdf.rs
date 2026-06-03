@@ -12,23 +12,31 @@ pub async fn export_pdf(
     change_key: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let (item, sig_png) = {
+    let (item, sig_png, tech_sig_png) = {
         let conn = state.db.0.lock().map_err(|e| e.to_string())?;
 
         let item = cache::get_by_item_id(&conn, &email, &item_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Intervento {} non trovato in cache", item_id))?;
 
+        // Client signature
         let sig_b64 = cache::get_signature_b64(&conn, &item_id).map_err(|e| e.to_string())?;
         let sig_png = sig_b64.and_then(|b| STANDARD.decode(&b).ok());
 
-        (item, sig_png)
+        // Tech signature (saved in config as "tech_signature_{email}")
+        let tech_key = format!("tech_signature_{}", email);
+        let tech_sig_png = cache::get_config(&conn, &tech_key)
+            .ok()
+            .flatten()
+            .and_then(|b| STANDARD.decode(&b).ok());
+
+        (item, sig_png, tech_sig_png)
     };
 
     // change_key is accepted but we use cache data; passed for future live-fetch
     let _ = change_key;
 
-    let bytes = pdf::generate_single(&item, sig_png).map_err(|e| e.to_string())?;
+    let bytes = pdf::generate_single(&item, sig_png, tech_sig_png).map_err(|e| e.to_string())?;
     Ok(STANDARD.encode(&bytes))
 }
 
