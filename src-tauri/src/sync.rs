@@ -9,6 +9,7 @@ use tauri::Emitter;
 
 const SYNC_INTERVAL_SECS: u64 = 900; // 15 min
 const SYNC_WINDOW_DAYS: i64 = 90;
+const FETCH_CONCURRENCY: usize = 6; // parallel GetItem round-trips per sync
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct SyncStatus {
@@ -81,18 +82,43 @@ pub async fn sync_account(
         .map(|i| (i.exchange_item_id.clone(), i.change_key.clone()))
         .collect();
 
+    // Fetch full items concurrently (bounded), keeping FETCH_CONCURRENCY in flight.
+    // Each GetItem is an independent blocking HTTP round-trip, so they parallelize well.
+    let client = Arc::new(client.clone());
+    let mut joinset: tokio::task::JoinSet<Option<parse::InterventionItem>> =
+        tokio::task::JoinSet::new();
+    let mut pending = to_fetch.into_iter();
+
+    let spawn_fetch = |joinset: &mut tokio::task::JoinSet<Option<parse::InterventionItem>>,
+                       job: (String, String)| {
+        let c = client.clone();
+        joinset.spawn_blocking(move || {
+            let (item_id, change_key) = job;
+            let get_soap = soap::get_item(&item_id, &change_key);
+            c.call_message("GetItem", &get_soap)
+                .ok()
+                .and_then(|xml| parse::parse_get_item(&xml).ok())
+        });
+    };
+
+    for _ in 0..FETCH_CONCURRENCY {
+        match pending.next() {
+            Some(job) => spawn_fetch(&mut joinset, job),
+            None => break,
+        }
+    }
+
     let mut count = 0i64;
-    for (item_id, change_key) in &to_fetch {
-        let get_soap = soap::get_item(item_id, change_key);
-        let get_resp = client.call_action("GetItem", &get_soap);
-        if let Ok(xml) = get_resp {
-            if let Ok(item) = parse::parse_get_item(&xml) {
-                let cached_item = CachedItem::from_item(&item, email);
-                if let Ok(conn) = state.db.0.lock() {
-                    cache::upsert_item(&conn, &cached_item).ok();
-                }
-                count += 1;
+    while let Some(res) = joinset.join_next().await {
+        if let Ok(Some(item)) = res {
+            let cached_item = CachedItem::from_item(&item, email);
+            if let Ok(conn) = state.db.0.lock() {
+                cache::upsert_item(&conn, &cached_item).ok();
             }
+            count += 1;
+        }
+        if let Some(job) = pending.next() {
+            spawn_fetch(&mut joinset, job);
         }
     }
 

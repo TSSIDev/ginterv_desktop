@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use base64::Engine;
 use std::time::Duration;
 
+#[derive(Clone)]
 pub struct EwsClient {
     pub endpoint: String,
     pub email: String,
@@ -47,13 +48,20 @@ impl EwsClient {
         v
     }
 
-    /// Run a SOAP call for the given EWS message (e.g. "GetItem"), blocking the
-    /// async caller. Prepends the standard messages namespace to build the SOAPAction.
+    /// Build the SOAPAction URL for a given EWS message (e.g. "GetItem").
+    fn action_url(message: &str) -> String {
+        format!("http://schemas.microsoft.com/exchange/services/2006/messages/{message}")
+    }
+
+    /// Blocking SOAP call by message name. Safe to use inside `spawn_blocking`.
+    pub fn call_message(&self, message: &str, body: &str) -> Result<String> {
+        self.call(&Self::action_url(message), body)
+    }
+
+    /// Like `call_message`, but yields the async runtime while the blocking HTTP
+    /// work runs — for use directly on a Tokio worker (not inside spawn_blocking).
     pub fn call_action(&self, message: &str, body: &str) -> Result<String> {
-        let action = format!(
-            "http://schemas.microsoft.com/exchange/services/2006/messages/{message}"
-        );
-        tokio::task::block_in_place(|| self.call(&action, body))
+        tokio::task::block_in_place(|| self.call_message(message, body))
     }
 
     /// Send a SOAP request, trying NTLM (multiple username formats) then Basic.
