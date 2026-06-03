@@ -62,6 +62,25 @@ pub fn find_items(email: &str, start: &str, end: &str) -> String {
 
 /// GetItem — AllProperties for a single calendar item.
 pub fn get_item(item_id: &str, change_key: &str) -> String {
+    get_items(std::slice::from_ref(&(item_id, change_key)))
+}
+
+/// GetItem — AllProperties for many calendar items in one round-trip.
+/// EWS accepts multiple `<t:ItemId>` per request; the response carries one
+/// item per id (per-id errors are reported individually, not as a SOAP fault).
+pub fn get_items(ids: &[(&str, &str)]) -> String {
+    let item_ids = ids
+        .iter()
+        .map(|(id, ck)| {
+            format!(
+                r#"<t:ItemId Id="{id}" ChangeKey="{ck}"/>"#,
+                id = xml_escape(id),
+                ck = xml_escape(ck),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n        ");
+
     let body = format!(
         r#"<m:GetItem>
       <m:ItemShape>
@@ -69,12 +88,11 @@ pub fn get_item(item_id: &str, change_key: &str) -> String {
         {ext}
       </m:ItemShape>
       <m:ItemIds>
-        <t:ItemId Id="{id}" ChangeKey="{ck}"/>
+        {item_ids}
       </m:ItemIds>
     </m:GetItem>"#,
         ext = ext_field_uris(),
-        id = xml_escape(item_id),
-        ck = xml_escape(change_key),
+        item_ids = item_ids,
     );
     soap_envelope(&body)
 }
@@ -261,4 +279,31 @@ fn xml_escape(s: &str) -> String {
 
 pub fn ext_prop_names() -> &'static [(&'static str, &'static str)] {
     EXT_PROPS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_item_is_single_id_batch() {
+        let single = get_item("AAA", "CK1");
+        let batch = get_items(&[("AAA", "CK1")]);
+        assert_eq!(single, batch);
+    }
+
+    #[test]
+    fn get_items_emits_one_itemid_per_id() {
+        let xml = get_items(&[("AAA", "CK1"), ("BBB", "CK2"), ("CCC", "CK3")]);
+        assert_eq!(xml.matches("<t:ItemId ").count(), 3);
+        assert!(xml.contains(r#"Id="BBB" ChangeKey="CK2""#));
+        assert!(xml.contains("<m:GetItem>"));
+    }
+
+    #[test]
+    fn get_items_escapes_ids() {
+        let xml = get_items(&[("a&b", "c<d")]);
+        assert!(xml.contains("a&amp;b"));
+        assert!(xml.contains("c&lt;d"));
+    }
 }

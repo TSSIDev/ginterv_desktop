@@ -12,6 +12,8 @@ const SYNC_WINDOW_DAYS: i64 = 90; // default half-window (each side of today)
 const SYNC_WINDOW_DAYS_MAX: i64 = 3650; // "Tutto" = ±10 years, EWS practical bound
 const FETCH_CONCURRENCY: usize = 6; // default parallel GetItem round-trips per sync
 const FETCH_CONCURRENCY_MAX: usize = 32; // clamp to avoid hammering Exchange
+const GETITEM_BATCH_SIZE: usize = 25; // default ItemIds bundled per GetItem call
+const GETITEM_BATCH_SIZE_MAX: usize = 50; // EWS handles more, but keep responses bounded
 
 /// Read the configured sync half-window in days, clamped to 1..=SYNC_WINDOW_DAYS_MAX.
 fn sync_window_days(state: &Arc<AppState>) -> i64 {
@@ -37,6 +39,19 @@ fn fetch_concurrency(state: &Arc<AppState>) -> usize {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(FETCH_CONCURRENCY);
     configured.clamp(1, FETCH_CONCURRENCY_MAX)
+}
+
+/// Read the configured GetItem batch size, clamped to 1..=GETITEM_BATCH_SIZE_MAX.
+fn getitem_batch_size(state: &Arc<AppState>) -> usize {
+    let configured = state
+        .db
+        .0
+        .lock()
+        .ok()
+        .and_then(|conn| cache::get_config(&conn, "sync_getitem_batch_size").ok().flatten())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(GETITEM_BATCH_SIZE);
+    configured.clamp(1, GETITEM_BATCH_SIZE_MAX)
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -111,44 +126,54 @@ pub async fn sync_account(
         .map(|i| (i.exchange_item_id.clone(), i.change_key.clone()))
         .collect();
 
-    // Fetch full items concurrently (bounded), keeping FETCH_CONCURRENCY in flight.
-    // Each GetItem is an independent blocking HTTP round-trip, so they parallelize well.
+    // Fetch full items in batched GetItem calls (many ItemIds per round-trip),
+    // running several batches concurrently and keeping `concurrency` in flight.
+    // Batching slashes round-trips and NTLM handshakes; the persistent EwsClient
+    // reuses authenticated connections across batches.
     let client = Arc::new(client.clone());
-    let mut joinset: tokio::task::JoinSet<Option<parse::InterventionItem>> =
-        tokio::task::JoinSet::new();
-    let mut pending = to_fetch.into_iter();
+    let batch_size = getitem_batch_size(state);
+    let batches: Vec<Vec<(String, String)>> =
+        to_fetch.chunks(batch_size).map(|c| c.to_vec()).collect();
 
-    let spawn_fetch = |joinset: &mut tokio::task::JoinSet<Option<parse::InterventionItem>>,
-                       job: (String, String)| {
+    let mut joinset: tokio::task::JoinSet<Vec<parse::InterventionItem>> =
+        tokio::task::JoinSet::new();
+    let mut pending = batches.into_iter();
+
+    let spawn_fetch = |joinset: &mut tokio::task::JoinSet<Vec<parse::InterventionItem>>,
+                       batch: Vec<(String, String)>| {
         let c = client.clone();
         joinset.spawn_blocking(move || {
-            let (item_id, change_key) = job;
-            let get_soap = soap::get_item(&item_id, &change_key);
+            let refs: Vec<(&str, &str)> =
+                batch.iter().map(|(id, ck)| (id.as_str(), ck.as_str())).collect();
+            let get_soap = soap::get_items(&refs);
             c.call_message("GetItem", &get_soap)
                 .ok()
-                .and_then(|xml| parse::parse_get_item(&xml).ok())
+                .and_then(|xml| parse::parse_find_items(&xml).ok())
+                .unwrap_or_default()
         });
     };
 
     let concurrency = fetch_concurrency(state);
     for _ in 0..concurrency {
         match pending.next() {
-            Some(job) => spawn_fetch(&mut joinset, job),
+            Some(batch) => spawn_fetch(&mut joinset, batch),
             None => break,
         }
     }
 
     let mut count = 0i64;
     while let Some(res) = joinset.join_next().await {
-        if let Ok(Some(item)) = res {
-            let cached_item = CachedItem::from_item(&item, email);
-            if let Ok(conn) = state.db.0.lock() {
-                cache::upsert_item(&conn, &cached_item).ok();
+        if let Ok(items) = res {
+            for item in items {
+                let cached_item = CachedItem::from_item(&item, email);
+                if let Ok(conn) = state.db.0.lock() {
+                    cache::upsert_item(&conn, &cached_item).ok();
+                }
+                count += 1;
             }
-            count += 1;
         }
-        if let Some(job) = pending.next() {
-            spawn_fetch(&mut joinset, job);
+        if let Some(batch) = pending.next() {
+            spawn_fetch(&mut joinset, batch);
         }
     }
 

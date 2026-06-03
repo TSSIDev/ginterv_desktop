@@ -1,6 +1,18 @@
 use anyhow::{bail, Result};
 use base64::Engine;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Max authenticated session-clients kept warm in the idle pool.
+const MAX_IDLE_SESSIONS: usize = 32;
+
+/// A credential that has been proven to work, so warm calls skip the
+/// candidate-probing sweep and re-authenticate directly when needed.
+#[derive(Clone)]
+enum Auth {
+    Ntlm { user: String, domain: String },
+    Basic { username: String },
+}
 
 #[derive(Clone)]
 pub struct EwsClient {
@@ -8,6 +20,13 @@ pub struct EwsClient {
     pub email: String,
     password: String,
     domain: Option<String>,
+    /// Remembered winning credential (shared across clones).
+    auth: Arc<Mutex<Option<Auth>>>,
+    /// Pool of idle, already-authenticated session-clients. Each holds a single
+    /// keep-alive connection; borrowing one and issuing a bare (header-less)
+    /// request reuses its NTLM-authenticated connection — paying the handshake
+    /// once per connection instead of once per call.
+    sessions: Arc<Mutex<Vec<reqwest::blocking::Client>>>,
 }
 
 impl EwsClient {
@@ -17,6 +36,8 @@ impl EwsClient {
             email: email.to_string(),
             password: password.to_string(),
             domain: domain.map(String::from),
+            auth: Arc::new(Mutex::new(None)),
+            sessions: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -26,12 +47,20 @@ impl EwsClient {
         Self::new(server, email, &password, domain)
     }
 
-    fn http_client() -> Result<reqwest::blocking::Client> {
+    /// One session-client = one keep-alive connection. `pool_max_idle_per_host(1)`
+    /// keeps the NTLM Type1/Type3 handshake pinned to the same TCP connection,
+    /// which is required for connection-oriented NTLM to succeed.
+    fn new_session_client() -> Result<reqwest::blocking::Client> {
         Ok(reqwest::blocking::Client::builder()
             .danger_accept_invalid_certs(true)
             .timeout(Duration::from_secs(30))
-            .pool_max_idle_per_host(1) // keep connection alive for NTLM 3-step handshake
+            .pool_max_idle_per_host(1)
+            .pool_idle_timeout(Duration::from_secs(120))
             .build()?)
+    }
+
+    fn b64(bytes: &[u8]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(bytes)
     }
 
     /// Username candidates to try, ordered most-likely-first.
@@ -41,10 +70,10 @@ impl EwsClient {
         let short = self.email.split('@').next().unwrap_or(&self.email).to_string();
         let mut v: Vec<(String, String)> = Vec::new();
         if let Some(d) = &self.domain {
-            v.push((short.clone(), d.clone()));            // DOMAIN\user  ← most common
+            v.push((short.clone(), d.clone())); // DOMAIN\user  ← most common
         }
-        v.push((self.email.clone(), String::new()));       // UPN, empty domain
-        v.push((short.clone(), String::new()));            // sAMAccountName only
+        v.push((self.email.clone(), String::new())); // UPN, empty domain
+        v.push((short.clone(), String::new())); // sAMAccountName only
         v
     }
 
@@ -64,14 +93,84 @@ impl EwsClient {
         tokio::task::block_in_place(|| self.call_message(message, body))
     }
 
-    /// Send a SOAP request, trying NTLM (multiple username formats) then Basic.
+    fn remember(&self, auth: Auth) {
+        if let Ok(mut g) = self.auth.lock() {
+            *g = Some(auth);
+        }
+    }
+
+    /// Return a still-authenticated session-client to the idle pool (bounded).
+    fn release(&self, client: reqwest::blocking::Client) {
+        if let Ok(mut v) = self.sessions.lock() {
+            if v.len() < MAX_IDLE_SESSIONS {
+                v.push(client);
+            }
+        }
+    }
+
+    /// Send a SOAP request. Reuses an authenticated keep-alive connection when
+    /// available; otherwise authenticates (remembered credential first, then a
+    /// full NTLM→Basic candidate sweep) and remembers what worked.
     pub fn call(&self, soap_action: &str, body: &str) -> Result<String> {
+        // Borrow a warm session if one is idle.
+        let warm = self.sessions.lock().ok().and_then(|mut v| v.pop());
+
+        if let Some(client) = warm {
+            // The connection is (probably) already authenticated → bare request.
+            if let Ok(text) = self.call_bare(&client, soap_action, body) {
+                self.release(client);
+                return Ok(text);
+            }
+            // Connection dropped or expired: re-authenticate this same client.
+            match self.authenticate(&client, soap_action, body) {
+                Ok(text) => {
+                    self.release(client);
+                    return Ok(text);
+                }
+                Err(_) => { /* drop client, fall through to a fresh one */ }
+            }
+        }
+
+        // Cold path: brand-new session-client, authenticate from scratch.
+        let client = Self::new_session_client()?;
+        let text = self.authenticate(&client, soap_action, body)?;
+        self.release(client);
+        Ok(text)
+    }
+
+    /// Authenticate `client`, preferring the remembered credential, then a full
+    /// candidate sweep (NTLM for each username form, then Basic). Remembers the
+    /// winner so later calls re-authenticate directly.
+    fn authenticate(
+        &self,
+        client: &reqwest::blocking::Client,
+        soap_action: &str,
+        body: &str,
+    ) -> Result<String> {
+        // Fast path: re-use the credential we already know works.
+        let remembered = self.auth.lock().ok().and_then(|g| g.clone());
+        if let Some(auth) = remembered {
+            let r = match &auth {
+                Auth::Ntlm { user, domain } => {
+                    self.call_ntlm(client, soap_action, body, user, domain)
+                }
+                Auth::Basic { username } => self.call_basic(client, soap_action, body, username),
+            };
+            if let Ok(text) = r {
+                return Ok(text);
+            }
+            // Remembered credential stopped working → fall through to full probe.
+        }
+
         let candidates = self.candidates();
         let mut last_err = String::new();
 
         for (user, domain) in &candidates {
-            match self.call_ntlm(soap_action, body, user, domain) {
-                Ok(r)  => return Ok(r),
+            match self.call_ntlm(client, soap_action, body, user, domain) {
+                Ok(r) => {
+                    self.remember(Auth::Ntlm { user: user.clone(), domain: domain.clone() });
+                    return Ok(r);
+                }
                 Err(e) => last_err = format!("NTLM {user}@{domain}: {e}"),
             }
         }
@@ -81,8 +180,11 @@ impl EwsClient {
             } else {
                 format!("{}\\{}", domain, user)
             };
-            match self.call_basic(soap_action, body, &username) {
-                Ok(r)  => return Ok(r),
+            match self.call_basic(client, soap_action, body, &username) {
+                Ok(r) => {
+                    self.remember(Auth::Basic { username });
+                    return Ok(r);
+                }
                 Err(e) => last_err = format!("Basic {username}: {e}"),
             }
         }
@@ -90,21 +192,38 @@ impl EwsClient {
         bail!("Exchange auth failed ({}): {}", self.endpoint, last_err)
     }
 
-    /// NTLM 3-step handshake on a single pooled connection.
+    /// Bare request with no Authorization header — succeeds only if the
+    /// underlying keep-alive connection is already NTLM-authenticated.
+    fn call_bare(
+        &self,
+        client: &reqwest::blocking::Client,
+        soap_action: &str,
+        body: &str,
+    ) -> Result<String> {
+        let resp = client
+            .post(&self.endpoint)
+            .header("SOAPAction", soap_action)
+            .header("Content-Type", "text/xml; charset=utf-8")
+            .body(body.to_string())
+            .send()?;
+        if resp.status().is_success() {
+            Ok(resp.text()?)
+        } else {
+            bail!("connection not authenticated: HTTP {}", resp.status())
+        }
+    }
+
+    /// NTLM 3-step handshake on a single pooled connection of `client`.
     fn call_ntlm(
         &self,
+        client: &reqwest::blocking::Client,
         soap_action: &str,
         body: &str,
         user: &str,
         domain: &str,
     ) -> Result<String> {
-        let client = Self::http_client()?;
-        let b64 = |bytes: &[u8]| -> String {
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        };
-
         // ── Step 1: Type1 Negotiate ──────────────────────────────────────────
-        let type1_hdr = format!("NTLM {}", b64(&crate::ntlm::negotiate_msg()));
+        let type1_hdr = format!("NTLM {}", Self::b64(&crate::ntlm::negotiate_msg()));
         let resp1 = client
             .post(&self.endpoint)
             .header("Authorization", type1_hdr)
@@ -138,7 +257,7 @@ impl EwsClient {
             .ok_or_else(|| anyhow::anyhow!("Invalid NTLM Type2 message"))?;
 
         let type3 = crate::ntlm::authenticate_msg(&challenge, user, domain, &self.password);
-        let type3_hdr = format!("NTLM {}", b64(&type3));
+        let type3_hdr = format!("NTLM {}", Self::b64(&type3));
 
         // ── Step 3: Type3 Authenticate (same pooled connection) ──────────────
         let resp2 = client
@@ -155,11 +274,16 @@ impl EwsClient {
         Ok(resp2.text()?)
     }
 
-    fn call_basic(&self, soap_action: &str, body: &str, username: &str) -> Result<String> {
+    fn call_basic(
+        &self,
+        client: &reqwest::blocking::Client,
+        soap_action: &str,
+        body: &str,
+        username: &str,
+    ) -> Result<String> {
         let token = base64::engine::general_purpose::STANDARD
             .encode(format!("{}:{}", username, self.password).as_bytes());
 
-        let client = Self::http_client()?;
         let resp = client
             .post(&self.endpoint)
             .header("Authorization", format!("Basic {}", token))
