@@ -259,6 +259,8 @@ pub async fn start_sync_loop(state: Arc<AppState>, sync_status: SyncStatusMap, h
                 }
             };
 
+            let _ = crate::flush::flush_pending(&client, &email, &state, Some(&handle)).await;
+
             match sync_account(&client, &email, &state, Some(&handle)).await {
                 Ok(count) => set_status(&sync_status, &email, |s| {
                     s.is_syncing = false;

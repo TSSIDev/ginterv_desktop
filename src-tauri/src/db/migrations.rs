@@ -47,11 +47,31 @@ pub fn run(conn: &Connection) -> Result<()> {
             key   TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS pending_ops (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email       TEXT NOT NULL,
+            op_type          TEXT NOT NULL,
+            local_id         TEXT NOT NULL,
+            exchange_item_id TEXT,
+            base_change_key  TEXT,
+            payload          TEXT,
+            status           TEXT NOT NULL DEFAULT 'pending',
+            attempts         INTEGER NOT NULL DEFAULT 0,
+            last_error       TEXT,
+            created_at       TEXT NOT NULL,
+            updated_at       TEXT NOT NULL
+        );
         ",
     )?;
     // Add luogo column to existing DBs (ignored if already present)
     conn.execute(
         "ALTER TABLE intervention_cache ADD COLUMN luogo TEXT",
+        [],
+    ).ok();
+    // Optimistic-write marker: create | update | delete (NULL = synced)
+    conn.execute(
+        "ALTER TABLE intervention_cache ADD COLUMN pending_op TEXT",
         [],
     ).ok();
     Ok(())

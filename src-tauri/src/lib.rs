@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod db;
 pub mod exchange;
+pub mod flush;
 pub mod keychain;
 pub mod ntlm;
 pub mod pdf;
@@ -77,6 +78,9 @@ pub fn run() {
             // sync
             commands::sync::trigger_sync,
             commands::sync::sync_status_cmd,
+            commands::sync::flush_queue,
+            commands::sync::list_conflicts,
+            commands::sync::resolve_conflict,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

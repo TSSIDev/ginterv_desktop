@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod migrations;
+pub mod queue;
 
 use anyhow::Result;
 use rusqlite::Connection;
