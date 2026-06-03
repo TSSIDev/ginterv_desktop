@@ -7,7 +7,7 @@ pub const CACHE_SCHEMA_VERSION: i64 = 1;
 const CACHE_COLS: &str = "id, user_email, exchange_item_id, change_key, start_dt, end_dt,
         subject, nome_tecnico, ragione_sociale, descrizione, altro,
         tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-        luogo, schema_version, synced_at";
+        luogo, pending_op, schema_version, synced_at";
 
 fn row_to_cached(r: &Row) -> Result<CachedItem> {
     Ok(CachedItem {
@@ -28,8 +28,9 @@ fn row_to_cached(r: &Row) -> Result<CachedItem> {
         durata: r.get(14)?,
         body_html: r.get(15)?,
         luogo: r.get(16)?,
-        schema_version: r.get(17)?,
-        synced_at: r.get(18)?,
+        pending_op: r.get(17)?,
+        schema_version: r.get(18)?,
+        synced_at: r.get(19)?,
     })
 }
 
@@ -52,6 +53,7 @@ pub struct CachedItem {
     pub durata: Option<String>,
     pub body_html: Option<String>,
     pub luogo: Option<String>,
+    pub pending_op: Option<String>,
     pub schema_version: i64,
     pub synced_at: String,
 }
@@ -88,6 +90,7 @@ impl CachedItem {
             durata: Some(item.durata.clone()),
             body_html: Some(item.body_html.clone()),
             luogo: Some(item.luogo.clone()),
+            pending_op: None,
             schema_version: CACHE_SCHEMA_VERSION,
             synced_at: chrono::Utc::now().to_rfc3339(),
         }
@@ -112,6 +115,7 @@ impl From<CachedItem> for crate::exchange::parse::InterventionItem {
             durata: c.durata.unwrap_or_default(),
             body_html: c.body_html.unwrap_or_default(),
             luogo: c.luogo.unwrap_or_default(),
+            pending_op: c.pending_op.unwrap_or_default(),
         }
     }
 }
@@ -122,8 +126,8 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             user_email, exchange_item_id, change_key, start_dt, end_dt,
             subject, nome_tecnico, ragione_sociale, descrizione, altro,
             tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-            luogo, schema_version, synced_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+            luogo, pending_op, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
         ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
             change_key        = excluded.change_key,
             start_dt          = excluded.start_dt,
@@ -139,6 +143,7 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             durata            = excluded.durata,
             body_html         = excluded.body_html,
             luogo             = excluded.luogo,
+            pending_op        = excluded.pending_op,
             schema_version    = excluded.schema_version,
             synced_at         = excluded.synced_at",
         params![
@@ -146,7 +151,8 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             item.start_dt, item.end_dt, item.subject, item.nome_tecnico,
             item.ragione_sociale, item.descrizione, item.altro,
             item.tipo_tariffa, item.tipo_fatturazione, item.trasferta,
-            item.durata, item.body_html, item.luogo, item.schema_version, item.synced_at,
+            item.durata, item.body_html, item.luogo, item.pending_op,
+            item.schema_version, item.synced_at,
         ],
     )?;
     Ok(())
@@ -162,8 +168,8 @@ pub fn upsert_item_metadata(conn: &Connection, item: &CachedItem) -> Result<()> 
             user_email, exchange_item_id, change_key, start_dt, end_dt,
             subject, nome_tecnico, ragione_sociale, descrizione, altro,
             tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-            luogo, schema_version, synced_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)
+            luogo, pending_op, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
         ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
             change_key        = excluded.change_key,
             start_dt          = excluded.start_dt,
@@ -185,7 +191,8 @@ pub fn upsert_item_metadata(conn: &Connection, item: &CachedItem) -> Result<()> 
             item.start_dt, item.end_dt, item.subject, item.nome_tecnico,
             item.ragione_sociale, item.descrizione, item.altro,
             item.tipo_tariffa, item.tipo_fatturazione, item.trasferta,
-            item.durata, item.body_html, item.luogo, item.schema_version, item.synced_at,
+            item.durata, item.body_html, item.luogo, item.pending_op,
+            item.schema_version, item.synced_at,
         ],
     )?;
     Ok(())
@@ -201,6 +208,7 @@ pub fn get_range(
         "SELECT {CACHE_COLS}
          FROM intervention_cache
          WHERE user_email = ?1 AND start_dt >= ?2 AND start_dt < ?3
+           AND (pending_op IS NULL OR pending_op != 'delete')
          ORDER BY start_dt"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -238,6 +246,48 @@ pub fn delete_item(conn: &Connection, user_email: &str, exchange_item_id: &str) 
     conn.execute(
         "DELETE FROM intervention_cache WHERE user_email = ?1 AND exchange_item_id = ?2",
         params![user_email, exchange_item_id],
+    )?;
+    Ok(())
+}
+
+/// Flag a cached row as having an unsynced local change (create/update/delete).
+pub fn mark_pending(conn: &Connection, user_email: &str, exchange_item_id: &str, op: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE intervention_cache SET pending_op = ?3
+         WHERE user_email = ?1 AND exchange_item_id = ?2",
+        params![user_email, exchange_item_id, op],
+    )?;
+    Ok(())
+}
+
+/// A flushed create: migrate the optimistic temp id to the real Exchange id in
+/// both the cache and the signatures table, and clear the pending flag.
+pub fn reconcile_create(
+    conn: &Connection,
+    user_email: &str,
+    local_id: &str,
+    real_id: &str,
+    change_key: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE intervention_cache
+         SET exchange_item_id = ?3, change_key = ?4, pending_op = NULL
+         WHERE user_email = ?1 AND exchange_item_id = ?2",
+        params![user_email, local_id, real_id, change_key],
+    )?;
+    conn.execute(
+        "UPDATE signatures SET exchange_item_id = ?2 WHERE exchange_item_id = ?1",
+        params![local_id, real_id],
+    )?;
+    Ok(())
+}
+
+/// A flushed update: store the new change_key and clear the pending flag.
+pub fn reconcile_update(conn: &Connection, user_email: &str, exchange_item_id: &str, change_key: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE intervention_cache SET change_key = ?3, pending_op = NULL
+         WHERE user_email = ?1 AND exchange_item_id = ?2",
+        params![user_email, exchange_item_id, change_key],
     )?;
     Ok(())
 }
@@ -343,6 +393,7 @@ mod tests {
             durata: Some("120".into()),
             body_html: Some("<p>note</p>".into()),
             luogo: None,
+            pending_op: None,
             schema_version: CACHE_SCHEMA_VERSION,
             synced_at: "2024-01-10T12:00:00".into(),
         };
@@ -366,7 +417,7 @@ mod tests {
             subject: None, nome_tecnico: None, ragione_sociale: None,
             descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, luogo: None, schema_version: 1,
+            body_html: None, luogo: None, pending_op: None, schema_version: 1,
             synced_at: "2024-03-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -392,7 +443,7 @@ mod tests {
             subject: Some("Old".into()), nome_tecnico: None, ragione_sociale: None,
             descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: Some("<p>keep me</p>".into()), luogo: None, schema_version: 1,
+            body_html: Some("<p>keep me</p>".into()), luogo: None, pending_op: None, schema_version: 1,
             synced_at: "2024-06-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -418,12 +469,83 @@ mod tests {
             end_dt: "2024-07-01T09:00:00".into(), subject: Some("Fresh".into()),
             nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
             tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: Some(String::new()), luogo: None, schema_version: 1,
+            body_html: Some(String::new()), luogo: None, pending_op: None, schema_version: 1,
             synced_at: "2024-07-01T10:00:00".into(),
         };
         upsert_item_metadata(&conn, &item).unwrap();
         let r = get_by_item_id(&conn, "u@u.com", "EEE").unwrap().unwrap();
         assert_eq!(r.subject.as_deref(), Some("Fresh"));
+    }
+
+    #[test]
+    fn test_get_range_hides_delete_tombstones() {
+        let conn = setup();
+        let mut item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "T1".into(),
+            change_key: "CK".into(), start_dt: "2024-08-01T08:00:00".into(),
+            end_dt: "2024-08-01T09:00:00".into(), subject: Some("x".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: None, luogo: None, pending_op: None, schema_version: 1,
+            synced_at: "2024-08-01T10:00:00".into(),
+        };
+        upsert_item(&conn, &item).unwrap();
+        assert_eq!(get_range(&conn, "u@u.com", "2024-08-01", "2024-08-02").unwrap().len(), 1);
+        mark_pending(&conn, "u@u.com", "T1", "delete").unwrap();
+        assert!(get_range(&conn, "u@u.com", "2024-08-01", "2024-08-02").unwrap().is_empty());
+        item.exchange_item_id = "T2".into();
+        upsert_item(&conn, &item).unwrap();
+        mark_pending(&conn, "u@u.com", "T2", "update").unwrap();
+        let rows = get_range(&conn, "u@u.com", "2024-08-01", "2024-08-02").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pending_op.as_deref(), Some("update"));
+    }
+
+    #[test]
+    fn test_reconcile_create_migrates_id_and_signature() {
+        let conn = setup();
+        let item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "tmp-abc".into(),
+            change_key: "".into(), start_dt: "2024-09-01T08:00:00".into(),
+            end_dt: "2024-09-01T09:00:00".into(), subject: Some("new".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: None, luogo: None, pending_op: Some("create".into()), schema_version: 1,
+            synced_at: "2024-09-01T10:00:00".into(),
+        };
+        upsert_item(&conn, &item).unwrap();
+        conn.execute(
+            "INSERT INTO signatures (exchange_item_id, png_base64, created_at) VALUES ('tmp-abc','PNG','t')",
+            [],
+        ).unwrap();
+
+        reconcile_create(&conn, "u@u.com", "tmp-abc", "REAL-1", "CK-NEW").unwrap();
+
+        let row = get_by_item_id(&conn, "u@u.com", "REAL-1").unwrap().unwrap();
+        assert_eq!(row.change_key, "CK-NEW");
+        assert_eq!(row.pending_op, None);
+        assert!(get_by_item_id(&conn, "u@u.com", "tmp-abc").unwrap().is_none());
+        let sig = get_signature_b64(&conn, "REAL-1").unwrap();
+        assert_eq!(sig.as_deref(), Some("PNG"));
+    }
+
+    #[test]
+    fn test_reconcile_update_clears_pending() {
+        let conn = setup();
+        let item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "U1".into(),
+            change_key: "OLD".into(), start_dt: "2024-10-01T08:00:00".into(),
+            end_dt: "2024-10-01T09:00:00".into(), subject: Some("s".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: None, luogo: None, pending_op: Some("update".into()), schema_version: 1,
+            synced_at: "2024-10-01T10:00:00".into(),
+        };
+        upsert_item(&conn, &item).unwrap();
+        reconcile_update(&conn, "u@u.com", "U1", "NEWCK").unwrap();
+        let row = get_by_item_id(&conn, "u@u.com", "U1").unwrap().unwrap();
+        assert_eq!(row.change_key, "NEWCK");
+        assert_eq!(row.pending_op, None);
     }
 
     #[test]
@@ -435,7 +557,7 @@ mod tests {
             end_dt: "2024-05-01T11:00:00".into(), subject: None, nome_tecnico: None,
             ragione_sociale: None, descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None, body_html: None,
-            luogo: None, schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
+            luogo: None, pending_op: None, schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
         delete_item(&conn, "a@b.com", "CCC").unwrap();

@@ -126,6 +126,7 @@ fn item_from_data(item_id: String, change_key: String, d: &InterventionData, sub
         durata: d.durata.clone().unwrap_or_default(),
         body_html: d.body_html.clone().unwrap_or_default(),
         luogo: d.luogo.clone().unwrap_or_default(),
+        pending_op: String::new(),
     }
 }
 

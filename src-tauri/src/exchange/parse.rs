@@ -22,6 +22,8 @@ pub struct InterventionItem {
     pub durata: String,
     pub body_html: String,
     pub luogo: String,
+    #[serde(default)]
+    pub pending_op: String,
 }
 
 /// Simple XML text extractor: returns the text content of the first element matching `tag_local`.
