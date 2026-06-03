@@ -564,6 +564,10 @@ const App = {
     const lightTheme = theme !== 'dark';
     document.body.classList.toggle('theme-light', lightTheme);
 
+    // Apply saved accent hue (set on :root so both themes resolve it)
+    const accentHue = localStorage.getItem('gi-accent-hue');
+    if (accentHue) document.documentElement.style.setProperty('--accent-hue', accentHue);
+
     // Keyboard shortcut Ctrl+K
     document.addEventListener('keydown', e => {
       if (e.defaultPrevented) return;

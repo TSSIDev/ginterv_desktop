@@ -468,8 +468,16 @@ const Settings = {
 
   // ── Aspetto ───────────────────────────────────────────────────────────
 
+  _ACCENT_PRESETS: [['Viola', 285], ['Blu', 255], ['Teal', 195], ['Verde', 150], ['Ambra', 70], ['Rosso', 25]],
+
   _renderAspetto(body) {
     const isLight = document.body.classList.contains('theme-light');
+    const curHue = localStorage.getItem('gi-accent-hue') || '285';
+    const swatches = this._ACCENT_PRESETS.map(([name, h]) =>
+      `<button type="button" class="st-accent-sw${String(h) === curHue ? ' on' : ''}" data-hue="${h}"
+         title="${name}" aria-label="Accento ${name}"
+         style="background: oklch(60% 0.17 ${h})" onclick="Settings._setAccent(${h})"></button>`
+    ).join('');
     body.innerHTML = `
       <div class="st-section-hdr">Aspetto</div>
       <div class="st-setting-list">
@@ -486,8 +494,23 @@ const Settings = {
             <span class="st-theme-option st-theme-light">☀ Chiaro</span>
           </button>
         </div>
+        <div class="st-setting-row">
+          <div>
+            <div class="st-setting-label">Colore accento</div>
+            <div class="st-setting-desc">Tinta dell'interfaccia (pulsanti, selezioni, evidenziazioni).</div>
+          </div>
+          <div class="st-accent-list">${swatches}</div>
+        </div>
       </div>
     `;
+  },
+
+  _setAccent(hue) {
+    document.documentElement.style.setProperty('--accent-hue', String(hue));
+    localStorage.setItem('gi-accent-hue', String(hue));
+    document.querySelectorAll('.st-accent-sw').forEach(el =>
+      el.classList.toggle('on', el.dataset.hue === String(hue))
+    );
   },
 
   _toggleTheme() {

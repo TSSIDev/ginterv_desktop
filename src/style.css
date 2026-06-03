@@ -16,9 +16,10 @@
   --bg-elev:    oklch(27% 0.018 270);  --bg-panel:   oklch(17.5% 0.015 270);
   --bg-hover:   oklch(30% 0.020 270);  --bg-sel:     oklch(34% 0.045 282);
 
-  --accent:        oklch(72% 0.150 285);
-  --accent-solid:  oklch(60% 0.170 285);
-  --accent-text:   oklch(99% 0.010 285);
+  --accent-hue:    285;
+  --accent:        oklch(72% 0.150 var(--accent-hue));
+  --accent-solid:  oklch(60% 0.170 var(--accent-hue));
+  --accent-text:   oklch(99% 0.010 var(--accent-hue));
   --accent-dim:    color-mix(in oklch, var(--accent) 15%, transparent);
 
   --green:  oklch(76% 0.150 155);  --amber:  oklch(82% 0.130 80);  --red: oklch(70% 0.170 28);
@@ -53,9 +54,9 @@ body.theme-light {
   --bg-elev:    oklch(98.6% 0.005 270);  --bg-panel:   oklch(95% 0.008 270);
   --bg-hover:   oklch(94% 0.011 270);    --bg-sel:     oklch(93% 0.045 285);
 
-  --accent:        oklch(52% 0.180 285);
-  --accent-solid:  oklch(54% 0.190 285);
-  --accent-text:   oklch(99% 0.010 285);
+  --accent:        oklch(52% 0.180 var(--accent-hue));
+  --accent-solid:  oklch(54% 0.190 var(--accent-hue));
+  --accent-text:   oklch(99% 0.010 var(--accent-hue));
   --accent-dim:    color-mix(in oklch, var(--accent) 12%, transparent);
 
   --green:  oklch(52% 0.150 155);  --amber:  oklch(58% 0.140 70);  --red: oklch(54% 0.190 28);
@@ -1441,3 +1442,13 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
 .cf-srv { color: var(--text-2); }
 .cf-actions { display: flex; gap: 8px; margin-top: 10px; }
 .cf-nodiff { color: var(--text-3); font-size: 12px; }
+
+/* ── Accent color presets (settings) ─────────────────────────────────── */
+.st-accent-list { display: flex; gap: 9px; flex-wrap: wrap; }
+.st-accent-sw {
+  width: 24px; height: 24px; border-radius: 999px; padding: 0; cursor: pointer;
+  border: 2px solid transparent; box-shadow: var(--sh-1);
+  transition: transform .12s var(--ease), border-color .12s var(--ease);
+}
+.st-accent-sw:hover { transform: scale(1.12); }
+.st-accent-sw.on { border-color: var(--text-1); transform: scale(1.05); }
