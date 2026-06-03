@@ -865,6 +865,29 @@ body.theme-light {
 .iv-tp { font-size: 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iv-s  { position: absolute; top: 4px; right: 5px; font-size: 9px; opacity: .6; }
 
+/* Drag-to-expand handles (top/bottom edges), shown on hover */
+.iv-resize {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 7px;
+  cursor: ns-resize; opacity: 0; transition: opacity .12s var(--ease);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.iv-resize.top { top: 0; bottom: auto; align-items: flex-start; }
+.iv:hover .iv-resize, .day-iv:hover .iv-resize { opacity: 1; }
+.iv-resize::after {
+  content: ''; width: 24px; height: 3px; margin-bottom: 1.5px;
+  border-radius: 999px; background: currentColor; opacity: .5;
+}
+.iv-resize.top::after { margin-bottom: 0; margin-top: 1.5px; }
+body.cal-resizing { cursor: ns-resize; user-select: none; }
+body.cal-resizing .iv, body.cal-resizing .day-iv { transition: none; }
+.cal-resize-bubble {
+  position: fixed; z-index: 1000; pointer-events: none;
+  padding: 4px 8px; border-radius: 7px;
+  background: var(--text-1); color: var(--bg-surface);
+  font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em; white-space: nowrap; box-shadow: var(--sh-2);
+}
+
 /* Day view intervention block */
 .day-iv {
   position: absolute; left: 4px; right: 4px; border-radius: var(--r-lg); padding: 8px 11px;

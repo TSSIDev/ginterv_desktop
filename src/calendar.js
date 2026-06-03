@@ -47,6 +47,10 @@ const Calendar = (() => {
   let _drag = null;
   let _pendingCreate = null;
 
+  // Drag-to-expand (resize) state
+  let _resize = null;
+  let _suppressClick = false; // swallow the click that follows a resize
+
   function _yToTime(relY, round = false) {
     const colH = (H_E - H_S) * H_PX;
     const slots = Math.max(0, Math.min(1, relY / colH)) * (H_E - H_S) * 60 / 15;
@@ -121,6 +125,105 @@ const Calendar = (() => {
     document.removeEventListener('mousedown', _onCreateOutsideDown, true);
     closeOverlay('cal-create-modal');
     _pendingCreate = null;
+  }
+
+  // ── Drag-to-expand (resize bottom edge → change duration) ─────────────
+
+  function _onResizeMove(e) {
+    if (!_resize) return;
+    const [yh, ym] = _yToTime(e.clientY - _resize.rect.top, true); // snapped to 15 min
+    const yTop = (yh - H_S) * 60 + ym;                              // minutes from grid top
+    if (_resize.edge === 'bottom') {
+      // End edge: keep start, clamp end to [start+15, end of grid].
+      const maxEnd = (H_E - H_S) * 60;
+      _resize.newEndTop = Math.min(maxEnd, Math.max(_resize.startTop + 15, yTop));
+    } else {
+      // Start edge: keep end, clamp start to [grid top, end-15].
+      _resize.newStartTop = Math.max(0, Math.min(_resize.endTop - 15, yTop));
+    }
+    const sTop = _resize.edge === 'top' ? _resize.newStartTop : _resize.startTop;
+    const eTop = _resize.edge === 'bottom' ? _resize.newEndTop : _resize.endTop;
+    _resize.block.style.top = (sTop / 60) * H_PX + 2 + 'px';
+    _resize.block.style.height = Math.max((eTop - sTop) / 60 * H_PX - 4, 18) + 'px';
+    _updateResizeBubble(e, sTop, eTop);
+  }
+
+  // Small bubble near the cursor showing the dragged edge's time + duration.
+  function _updateResizeBubble(e, sTop, eTop) {
+    const b = _resize.bubble;
+    if (!b) return;
+    const edgeMin = H_S * 60 + (_resize.edge === 'bottom' ? eTop : sTop);
+    b.textContent = `${hm(Math.floor(edgeMin / 60), edgeMin % 60)} · ${minHM(eTop - sTop)}`;
+    let x = e.clientX + 14, y = e.clientY - 12;
+    x = Math.min(x, window.innerWidth - b.offsetWidth - 6);
+    y = Math.max(6, Math.min(y, window.innerHeight - b.offsetHeight - 6));
+    b.style.left = x + 'px';
+    b.style.top = y + 'px';
+  }
+
+  function _onResizeUp() {
+    if (!_resize) return;
+    document.removeEventListener('mousemove', _onResizeMove);
+    document.removeEventListener('mouseup', _onResizeUp);
+    document.body.classList.remove('cal-resizing');
+    const r = _resize;
+    if (r.bubble) r.bubble.remove();
+    _resize = null;
+    _suppressClick = true;
+    setTimeout(() => { _suppressClick = false; }, 300); // self-heal if no click fires
+
+    const changed = r.edge === 'bottom'
+      ? r.newEndTop !== r.origEndTop
+      : r.newStartTop !== r.origStartTop;
+    if (!changed) {
+      if (currentView === 'week') renderWeek(); else renderDay();
+      return;
+    }
+    // Build grid-aligned dates from the day's H_S baseline.
+    const dayBase = new Date(r.startD); dayBase.setHours(H_S, 0, 0, 0);
+    const at = (topMin) => new Date(dayBase.getTime() + topMin * 60000);
+    const newStart = r.edge === 'top' ? at(r.newStartTop) : r.startD;
+    const newEnd   = r.edge === 'bottom' ? at(r.newEndTop) : r.endD;
+    _saveResize(r.item, newStart, newEnd);
+  }
+
+  async function _saveResize(item, newStart, newEnd) {
+    const primary = App.accounts && (App.accounts.find(a => a.is_primary) || App.accounts[0]);
+    const email = primary?.email || '';
+    const local = getItems().find(i => i.exchange_item_id === item.exchange_item_id);
+    const prev = local ? { start: local.start_dt, end: local.end_dt } : null;
+    // Optimistic: show the new geometry immediately.
+    if (local) { local.start_dt = newStart.toISOString(); local.end_dt = newEnd.toISOString(); }
+    if (currentView === 'week') renderWeek(); else renderDay();
+
+    const data = {
+      email, subject: item.subject,
+      start: newStart.toISOString(), end: newEnd.toISOString(),
+      body_html: item.body_html, luogo: item.luogo,
+      nome_tecnico: item.nome_tecnico, ragione_sociale: item.ragione_sociale,
+      descrizione: item.descrizione, altro: item.altro,
+      tipo_tariffa: item.tipo_tariffa, tipo_fatturazione: item.tipo_fatturazione,
+      trasferta: item.trasferta, durata: item.durata,
+    };
+    try {
+      const updated = await invoke('update_intervention', {
+        input: { email, item_id: item.exchange_item_id, change_key: item.change_key, data },
+      });
+      if (local && updated) {
+        local.change_key = updated.change_key;
+        local.start_dt = updated.start_dt;
+        local.end_dt = updated.end_dt;
+      }
+      if (selectedItem?.exchange_item_id === item.exchange_item_id && local) {
+        selectedItem = local;
+        App.showDetail(local);
+      }
+      toast('Orario aggiornato', 'success');
+    } catch (err) {
+      if (local && prev) { local.start_dt = prev.start; local.end_dt = prev.end; } // revert
+      toast('Errore aggiornamento: ' + err, 'error');
+    }
+    if (currentView === 'week') renderWeek(); else renderDay();
   }
 
   function getItems() { return (typeof App !== 'undefined' && App.interventions) || []; }
@@ -378,7 +481,7 @@ const Calendar = (() => {
         const padStyle = ht < 26 ? 'padding:2px 4px' : ht < 46 ? 'padding:3px 5px' : '';
         blocks += `<div class="iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}</div>`;
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${ht >= 44 ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div></div>`;
       });
 
       let nowLine = '';
@@ -458,7 +561,7 @@ const Calendar = (() => {
         const padStyle = ht < 30 ? 'padding:3px 6px' : ht < 52 ? 'padding:5px 8px' : '';
         blocks += `<div class="day-iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}</div>`;
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${ht >= 44 ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div></div>`;
       });
       let nowLine = '';
       const n = new Date(), h = n.getHours(), m = n.getMinutes();
@@ -709,7 +812,35 @@ const Calendar = (() => {
       }
     },
 
+    _resizeDown(e, itemJson, edge) {
+      e.preventDefault();
+      e.stopPropagation(); // don't start a column drag-to-create
+      const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
+      const block = e.target.closest('.iv, .day-iv');
+      const col = e.target.closest('.day-col');
+      if (!block || !col) return;
+      const startD = new Date(item.start_dt);
+      const endD = item.end_dt ? new Date(item.end_dt) : new Date(startD.getTime() + 3600000);
+      const startTop = (startD.getHours() - H_S) * 60 + startD.getMinutes();
+      const endTop = startTop + Math.max(15, Math.round((endD - startD) / 60000));
+      const bubble = document.createElement('div');
+      bubble.className = 'cal-resize-bubble';
+      document.body.appendChild(bubble);
+      _resize = {
+        item, block, col, edge: edge || 'bottom', bubble,
+        rect: col.getBoundingClientRect(),
+        startD, endD, startTop, endTop,
+        origStartTop: startTop, origEndTop: endTop,
+        newStartTop: startTop, newEndTop: endTop,
+      };
+      document.body.classList.add('cal-resizing');
+      _updateResizeBubble(e, startTop, endTop);
+      document.addEventListener('mousemove', _onResizeMove);
+      document.addEventListener('mouseup', _onResizeUp);
+    },
+
     _select(itemJson) {
+      if (_suppressClick) { _suppressClick = false; return; }
       const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
       selectedItem = item;
       App.showDetail(item);
