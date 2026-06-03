@@ -21,14 +21,16 @@ const Settings = {
     const email = (this._accounts[0] || {}).email || '';
 
     // Load all async data at once — navigation is then fully synchronous
-    const [dd, sig, interval] = await Promise.all([
+    const [dd, sig, interval, concurrency] = await Promise.all([
       invoke('get_dropdown_data').catch(() => ({})),
       email ? invoke('get_config_value', { key: 'tech_signature_' + email }).catch(() => null) : Promise.resolve(null),
       invoke('get_config_value', { key: 'sync_interval_minutes' }).catch(() => null),
+      invoke('get_config_value', { key: 'sync_fetch_concurrency' }).catch(() => null),
     ]);
     this._dropdownData = dd || {};
     this._techSigB64   = sig || null;
     this._syncInterval = interval ? parseInt(interval) : 15;
+    this._syncConcurrency = concurrency ? parseInt(concurrency) : 6;
 
     this._render();
   },
@@ -359,6 +361,7 @@ const Settings = {
 
   _renderSync(body) {
     const interval = this._syncInterval;
+    const concurrency = this._syncConcurrency;
     body.innerHTML = `
       <div class="st-section-hdr">Intervallo sincronizzazione</div>
       <div class="fg" style="max-width:280px;margin-top:4px">
@@ -366,6 +369,16 @@ const Settings = {
         <select class="fg-in" id="st-sync-interval" onchange="Settings._saveInterval()">
           ${[5, 10, 15, 30, 60].map(m =>
             `<option value="${m}"${interval === m ? ' selected' : ''}>${m} minuti</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="st-section-hdr" style="margin-top:24px">Download parallelo</div>
+      <div class="st-section-desc">Quanti interventi scaricare contemporaneamente da Exchange durante il sync. Valori alti = più veloce, ma carica di più il server.</div>
+      <div class="fg" style="max-width:280px;margin-top:4px">
+        <label class="fg-lbl">Richieste simultanee</label>
+        <select class="fg-in" id="st-sync-concurrency" onchange="Settings._saveConcurrency()">
+          ${[1, 2, 4, 6, 8, 12, 16].map(n =>
+            `<option value="${n}"${concurrency === n ? ' selected' : ''}>${n}</option>`
           ).join('')}
         </select>
       </div>
@@ -390,6 +403,19 @@ const Settings = {
       await invoke('set_config_value', { key: 'sync_interval_minutes', value: val });
       this._syncInterval = parseInt(val);
       toast('Intervallo salvato', 'success');
+    } catch(e) {
+      toast('Errore: ' + e, 'error');
+    }
+  },
+
+  async _saveConcurrency() {
+    const sel = $('st-sync-concurrency');
+    if (!sel) return;
+    const val = sel.value;
+    try {
+      await invoke('set_config_value', { key: 'sync_fetch_concurrency', value: val });
+      this._syncConcurrency = parseInt(val);
+      toast('Concorrenza salvata', 'success');
     } catch(e) {
       toast('Errore: ' + e, 'error');
     }

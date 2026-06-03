@@ -9,7 +9,21 @@ use tauri::Emitter;
 
 const SYNC_INTERVAL_SECS: u64 = 900; // 15 min
 const SYNC_WINDOW_DAYS: i64 = 90;
-const FETCH_CONCURRENCY: usize = 6; // parallel GetItem round-trips per sync
+const FETCH_CONCURRENCY: usize = 6; // default parallel GetItem round-trips per sync
+const FETCH_CONCURRENCY_MAX: usize = 32; // clamp to avoid hammering Exchange
+
+/// Read the configured GetItem concurrency, clamped to 1..=FETCH_CONCURRENCY_MAX.
+fn fetch_concurrency(state: &Arc<AppState>) -> usize {
+    let configured = state
+        .db
+        .0
+        .lock()
+        .ok()
+        .and_then(|conn| cache::get_config(&conn, "sync_fetch_concurrency").ok().flatten())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(FETCH_CONCURRENCY);
+    configured.clamp(1, FETCH_CONCURRENCY_MAX)
+}
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct SyncStatus {
@@ -101,7 +115,8 @@ pub async fn sync_account(
         });
     };
 
-    for _ in 0..FETCH_CONCURRENCY {
+    let concurrency = fetch_concurrency(state);
+    for _ in 0..concurrency {
         match pending.next() {
             Some(job) => spawn_fetch(&mut joinset, job),
             None => break,
