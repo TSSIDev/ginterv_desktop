@@ -18,7 +18,9 @@ pub fn is_conflict(base_change_key: Option<&str>, server_change_key: &str) -> bo
 
 /// Read the live server change_key for an item (None if it no longer exists).
 fn server_change_key(client: &EwsClient, item_id: &str, base_ck: &str) -> Option<String> {
-    let xml = client.call_message("GetItem", &soap::get_item(item_id, base_ck)).ok()?;
+    let xml = client
+        .call_action("GetItem", &soap::get_item(item_id, base_ck))
+        .ok()?;
     parse::parse_get_item(&xml).ok().map(|i| i.change_key)
 }
 
@@ -86,7 +88,12 @@ pub async fn flush_pending(
     Ok(flushed)
 }
 
-fn flush_one(client: &EwsClient, email: &str, state: &Arc<AppState>, op: &queue::PendingOp) -> FlushOutcome {
+fn flush_one(
+    client: &EwsClient,
+    email: &str,
+    state: &Arc<AppState>,
+    op: &queue::PendingOp,
+) -> FlushOutcome {
     match op.op_type.as_str() {
         "create" => {
             let Some(data) = data_from_payload(&op.payload) else {
@@ -94,7 +101,7 @@ fn flush_one(client: &EwsClient, email: &str, state: &Arc<AppState>, op: &queue:
             };
             let subject = crate::commands::interventions::resolve_subject(&data);
             let soap_data = crate::commands::interventions::build_soap_data(email, &data, &subject);
-            match client.call_message("CreateItem", &soap::create_item(&soap_data)) {
+            match client.call_action("CreateItem", &soap::create_item(&soap_data)) {
                 Ok(xml) => match parse::parse_create_item(&xml) {
                     Ok((real_id, ck)) => {
                         if let Ok(conn) = state.db.0.lock() {
@@ -121,7 +128,10 @@ fn flush_one(client: &EwsClient, email: &str, state: &Arc<AppState>, op: &queue:
             };
             let subject = crate::commands::interventions::resolve_subject(&data);
             let soap_data = crate::commands::interventions::build_soap_data(email, &data, &subject);
-            match client.call_message("UpdateItem", &soap::update_item(&item_id, &server_ck, &soap_data)) {
+            match client.call_action(
+                "UpdateItem",
+                &soap::update_item(&item_id, &server_ck, &soap_data),
+            ) {
                 Ok(xml) => match parse::parse_update_item(&xml) {
                     Ok(new_ck) => {
                         let ck = if new_ck.is_empty() { server_ck } else { new_ck };
@@ -151,7 +161,7 @@ fn flush_one(client: &EwsClient, email: &str, state: &Arc<AppState>, op: &queue:
             if is_conflict(op.base_change_key.as_deref(), &server_ck) {
                 return FlushOutcome::Conflict;
             }
-            match client.call_message("DeleteItem", &soap::delete_item(&item_id, &server_ck)) {
+            match client.call_action("DeleteItem", &soap::delete_item(&item_id, &server_ck)) {
                 Ok(xml) => match parse::parse_delete_item(&xml) {
                     Ok(()) => {
                         if let Ok(conn) = state.db.0.lock() {

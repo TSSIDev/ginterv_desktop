@@ -1,12 +1,24 @@
 use anyhow::{bail, Result};
 use base64::Engine;
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 /// Max authenticated session-clients kept warm in the idle pool.
 const MAX_IDLE_SESSIONS: usize = 32;
 /// How many times to honour an EWS `ErrorServerBusy` back-off before giving up.
 const MAX_THROTTLE_RETRIES: u32 = 3;
+
+type SessionPool = Arc<Mutex<Vec<reqwest::blocking::Client>>>;
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct SessionPoolKey {
+    endpoint: String,
+    email: String,
+    domain: Option<String>,
+}
+
+static SESSION_POOLS: OnceLock<Mutex<HashMap<SessionPoolKey, SessionPool>>> = OnceLock::new();
 
 /// A credential that has been proven to work, so warm calls skip the
 /// candidate-probing sweep and re-authenticate directly when needed.
@@ -33,13 +45,16 @@ pub struct EwsClient {
 
 impl EwsClient {
     pub fn new(server: &str, email: &str, password: &str, domain: Option<&str>) -> Result<Self> {
+        let endpoint = format!("https://{}/EWS/Exchange.asmx", server);
+        let sessions = Self::session_pool(&endpoint, email, domain);
+
         Ok(Self {
-            endpoint: format!("https://{}/EWS/Exchange.asmx", server),
+            endpoint,
             email: email.to_string(),
             password: password.to_string(),
             domain: domain.map(String::from),
             auth: Arc::new(Mutex::new(None)),
-            sessions: Arc::new(Mutex::new(Vec::new())),
+            sessions,
         })
     }
 
@@ -62,6 +77,20 @@ impl EwsClient {
             .build()?)
     }
 
+    fn session_pool(endpoint: &str, email: &str, domain: Option<&str>) -> SessionPool {
+        let key = SessionPoolKey {
+            endpoint: endpoint.to_string(),
+            email: email.to_string(),
+            domain: domain.map(String::from),
+        };
+        let pools = SESSION_POOLS.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut pools = pools.lock().unwrap_or_else(|e| e.into_inner());
+        pools
+            .entry(key)
+            .or_insert_with(|| Arc::new(Mutex::new(Vec::new())))
+            .clone()
+    }
+
     fn b64(bytes: &[u8]) -> String {
         base64::engine::general_purpose::STANDARD.encode(bytes)
     }
@@ -70,7 +99,12 @@ impl EwsClient {
     /// Mirrors get_account() in exchange_service.py.
     fn candidates(&self) -> Vec<(String, String)> {
         // (user_for_ntlm_hash, domain_for_ntlm_hash)
-        let short = self.email.split('@').next().unwrap_or(&self.email).to_string();
+        let short = self
+            .email
+            .split('@')
+            .next()
+            .unwrap_or(&self.email)
+            .to_string();
         let mut v: Vec<(String, String)> = Vec::new();
         if let Some(d) = &self.domain {
             v.push((short.clone(), d.clone())); // DOMAIN\user  ← most common
@@ -189,7 +223,10 @@ impl EwsClient {
         for (user, domain) in &candidates {
             match self.call_ntlm(client, soap_action, body, user, domain) {
                 Ok(r) => {
-                    self.remember(Auth::Ntlm { user: user.clone(), domain: domain.clone() });
+                    self.remember(Auth::Ntlm {
+                        user: user.clone(),
+                        domain: domain.clone(),
+                    });
                     return Ok(r);
                 }
                 Err(e) => last_err = format!("NTLM {user}@{domain}: {e}"),
@@ -317,5 +354,30 @@ impl EwsClient {
             bail!("Basic: HTTP {}", resp.status());
         }
         Ok(resp.text()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clients_for_same_account_share_session_pool() {
+        let a = EwsClient::new(
+            "exchange.example.test",
+            "user@example.test",
+            "secret",
+            Some("DOM"),
+        )
+        .unwrap();
+        let b = EwsClient::new(
+            "exchange.example.test",
+            "user@example.test",
+            "secret",
+            Some("DOM"),
+        )
+        .unwrap();
+
+        assert!(Arc::ptr_eq(&a.sessions, &b.sessions));
     }
 }

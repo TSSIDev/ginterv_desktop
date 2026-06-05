@@ -14,6 +14,7 @@ const FETCH_CONCURRENCY: usize = 6; // default parallel GetItem round-trips per 
 const FETCH_CONCURRENCY_MAX: usize = 32; // clamp to avoid hammering Exchange
 const GETITEM_BATCH_SIZE: usize = 25; // default ItemIds bundled per GetItem call
 const GETITEM_BATCH_SIZE_MAX: usize = 50; // EWS handles more, but keep responses bounded
+const FINDITEM_CHUNK_DAYS: i64 = 90; // keep CalendarView ranges under Exchange's practical limits
 
 /// Read the configured sync half-window in days, clamped to 1..=SYNC_WINDOW_DAYS_MAX.
 fn sync_window_days(state: &Arc<AppState>) -> i64 {
@@ -54,6 +55,23 @@ fn getitem_batch_size(state: &Arc<AppState>) -> usize {
     configured.clamp(1, GETITEM_BATCH_SIZE_MAX)
 }
 
+fn find_item_windows(now: chrono::DateTime<chrono::Utc>, window_days: i64) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut cursor = now - chrono::Duration::days(window_days);
+    let end = now + chrono::Duration::days(window_days);
+
+    while cursor < end {
+        let next = (cursor + chrono::Duration::days(FINDITEM_CHUNK_DAYS)).min(end);
+        out.push((
+            cursor.format("%Y-%m-%dT00:00:00Z").to_string(),
+            next.format("%Y-%m-%dT23:59:59Z").to_string(),
+        ));
+        cursor = next + chrono::Duration::days(1);
+    }
+
+    out
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct SyncStatus {
     pub last_sync: Option<String>,
@@ -86,10 +104,12 @@ pub async fn sync_account(
         .format("%Y-%m-%dT23:59:59Z")
         .to_string();
 
-    let soap_body = soap::find_items(email, &start, &end);
-    let resp = client.call_action("FindItem", &soap_body)?;
-
-    let remote_items = parse::parse_find_items(&resp)?;
+    let mut remote_items = Vec::new();
+    for (chunk_start, chunk_end) in find_item_windows(now, window_days) {
+        let soap_body = soap::find_items(email, &chunk_start, &chunk_end);
+        let resp = client.call_action("FindItem", &soap_body)?;
+        remote_items.extend(parse::parse_find_items(&resp)?);
+    }
 
     // Build map of remote change_keys
     let remote_map: HashMap<String, String> = remote_items
@@ -214,6 +234,24 @@ pub async fn sync_account(
     }
 
     Ok(count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn find_item_windows_split_large_sync_ranges_into_90_day_chunks() {
+        let now = chrono::Utc.with_ymd_and_hms(2026, 6, 3, 13, 0, 0).unwrap();
+        let windows = find_item_windows(now, 180);
+
+        assert_eq!(windows.len(), 4);
+        assert_eq!(windows[0].0, "2025-12-05T00:00:00Z");
+        assert_eq!(windows[0].1, "2026-03-05T23:59:59Z");
+        assert_eq!(windows[3].0, "2026-09-04T00:00:00Z");
+        assert_eq!(windows[3].1, "2026-11-30T23:59:59Z");
+    }
 }
 
 pub async fn start_sync_loop(state: Arc<AppState>, sync_status: SyncStatusMap, handle: tauri::AppHandle) {

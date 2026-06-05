@@ -237,6 +237,44 @@ function closeOverlay(el) {
   setTimeout(finish, 240);
 }
 
+// Styled replacement for native confirm(). Returns a Promise<boolean>.
+function confirmDialog({ title = 'Conferma', message = '', confirmText = 'Conferma', cancelText = 'Annulla', danger = false } = {}) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal" style="width:400px">
+        <div class="modal-head">
+          <div class="modal-title">${escHtml(title)}</div>
+          <button class="modal-close" data-act="cancel" aria-label="Chiudi">&times;</button>
+        </div>
+        <div style="padding:2px 22px 18px;font-size:13px;color:var(--text-2);line-height:1.5">${escHtml(message)}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding:0 22px 18px">
+          <button class="btn" data-act="cancel">${escHtml(cancelText)}</button>
+          <button class="btn ${danger ? 'danger' : 'primary'}" data-act="ok">${escHtml(confirmText)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    let settled = false;
+    const done = (val) => {
+      if (settled) return; settled = true;
+      document.removeEventListener('keydown', onKey);
+      ov.classList.add('closing');
+      ov.addEventListener('animationend', e => { if (e.target === ov) ov.remove(); }, { once: true });
+      setTimeout(() => ov.remove(), 240);
+      resolve(val);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') done(false); else if (e.key === 'Enter') done(true); };
+    ov.addEventListener('click', e => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'ok') done(true);
+      else if (act === 'cancel' || e.target === ov) done(false);
+    });
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => ov.querySelector('[data-act="ok"]').focus(), 60);
+  });
+}
+
 // Position the sliding indicator under the active button of a segmented toggle.
 function syncSeg(container) {
   if (!container) return;
@@ -248,8 +286,12 @@ function syncSeg(container) {
   }
   const active = container.querySelector('.on, .active');
   if (!active || !active.offsetWidth) { thumb.classList.remove('ready'); return; }
-  thumb.style.width = active.offsetWidth + 'px';
-  thumb.style.transform = `translateX(${active.offsetLeft - (container.clientLeft || 0)}px)`;
+  // Use fractional rects, not rounded offsetWidth/offsetLeft, so the thumb lands
+  // exactly on the button (integer offsets drift ~1px with sub-pixel button widths).
+  const cRect = container.getBoundingClientRect();
+  const aRect = active.getBoundingClientRect();
+  thumb.style.width = aRect.width + 'px';
+  thumb.style.transform = `translateX(${aRect.left - cRect.left - (container.clientLeft || 0)}px)`;
   requestAnimationFrame(() => thumb.classList.add('ready'));
 }
 window.addEventListener('resize', () => {
@@ -539,6 +581,7 @@ const App = {
   currentView: 'interventions',
   accounts: [],
   interventions: [],
+  _interventionsSnapshot: '',
   editingItem: null,
   _fuzzy: {},
   _dropdownData: null,
@@ -981,6 +1024,27 @@ const App = {
   },
 
   // ── Interventions list ────────────────────────────────────────────
+  _interventionsSignature(items) {
+    return JSON.stringify((items || []).map(i => [
+      i.exchange_item_id,
+      i.change_key,
+      i.start_dt,
+      i.end_dt,
+      i.subject,
+      i.nome_tecnico,
+      i.ragione_sociale,
+      i.descrizione,
+      i.altro,
+      i.tipo_tariffa,
+      i.tipo_fatturazione,
+      i.trasferta,
+      i.durata,
+      i.body_html,
+      i.luogo,
+      i.pending_op,
+    ]));
+  },
+
   async loadInterventions() {
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (!primary) { this.renderList([]); return; }
@@ -990,9 +1054,13 @@ const App = {
     const end   = new Date(now.getTime() + MS_90D).toISOString();
     try {
       const items = await invoke('list_interventions', { email: primary.email, start, end });
+      const signature = this._interventionsSignature(items);
+      if (signature === this._interventionsSnapshot) return false;
+      this._interventionsSnapshot = signature;
       this.interventions = items;
       this.renderList(items);
       if (this.currentView === 'calendar') Calendar.refresh();
+      return true;
     } catch(e) { console.error(e); }
   },
 
@@ -1066,7 +1134,7 @@ const App = {
 
   showDetail(itemJson, hasSig) {
     const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    $('workspace')?.classList.remove('collapse-right');
+    const ws = $('workspace');
     this._currentItemId = { id: item.exchange_item_id, ck: item.change_key };
     const empty = $('detail-empty');
     const fill = $('detail-fill');
@@ -1074,15 +1142,20 @@ const App = {
     if (!fill) return;
     fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
     fill.innerHTML = renderInterventionDetail(item);
+    fill.classList.remove('detail-enter');
+    void fill.offsetWidth;
+    const open = () => { ws?.classList.remove('collapse-right'); fill.classList.add('detail-enter'); };
+    // Opening from a collapsed panel: let the freshly-set content paint (still
+    // clipped at width 0) for one frame, then start the width-wipe → no blank flash.
+    if (ws?.classList.contains('collapse-right')) requestAnimationFrame(open);
+    else open();
   },
 
   clearDetail() {
-    const empty = $('detail-empty');
-    const fill = $('detail-fill');
-    if (empty) empty.style.display = 'flex';
-    if (fill) { fill.style.display = 'none'; fill.innerHTML = ''; }
-    $('workspace')?.classList.add('collapse-right');
     this._currentItemId = null;
+    // Collapse the grid track → panel wipes closed (width transition). Content is
+    // left in place (clipped at 0 width) and replaced on the next showDetail.
+    $('workspace')?.classList.add('collapse-right');
   },
 
   editItem(itemJson) {
@@ -1102,10 +1175,18 @@ const App = {
   },
 
   async confirmDelete(itemJson) {
+    closeOverlay('ctx-menu');
     const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
-    if (!confirm(`Eliminare l'intervento di ${item.ragione_sociale}?`)) return;
+    const ok = await confirmDialog({
+      title: 'Elimina intervento',
+      message: `Eliminare l'intervento di ${item.ragione_sociale || '—'}? L'operazione non è reversibile.`,
+      confirmText: 'Elimina', danger: true,
+    });
+    if (!ok) return;
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     try {
+      // Fade the block out before the data refresh removes it (coherent exit).
+      if (this.currentView === 'calendar') await Calendar.animateOut(item.exchange_item_id);
       await invoke('delete_intervention', { email: primary.email, itemId: item.exchange_item_id, changeKey: item.change_key });
       toast('Intervento eliminato', 'success');
       this.clearDetail();
@@ -1470,7 +1551,7 @@ const App = {
     this._ctxItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     const menu = $('ctx-menu');
     menu.classList.remove('hidden', 'closing');
-    const mw = 220, mh = 80;
+    const mw = 220, mh = 230;
     menu.style.left = Math.min(e.clientX + 2, window.innerWidth  - mw - 8) + 'px';
     menu.style.top  = Math.min(e.clientY + 2, window.innerHeight - mh - 8) + 'px';
     const close = () => {
@@ -1482,6 +1563,91 @@ const App = {
       document.addEventListener('click', close);
       document.addEventListener('contextmenu', close);
     }, 0);
+  },
+
+  // Copy an appointment's content (everything except signature/ids/times) into a
+  // JS clipboard for later "Incolla qui" on an empty calendar slot.
+  copyItem(itemJson) {
+    closeOverlay('ctx-menu');
+    const it = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
+    let durataMin = 60;
+    if (it.start_dt && it.end_dt) {
+      const d = (new Date(it.end_dt) - new Date(it.start_dt)) / 60000;
+      if (d > 0) durataMin = Math.round(d);
+    }
+    this._clipboard = {
+      nome_tecnico: it.nome_tecnico || null,
+      ragione_sociale: it.ragione_sociale || null,
+      descrizione: it.descrizione || null,
+      altro: it.altro || null,
+      luogo: it.luogo || null,
+      tipo_tariffa: it.tipo_tariffa || null,
+      tipo_fatturazione: it.tipo_fatturazione || null,
+      trasferta: it.trasferta || null,
+      durata: it.durata || null,
+      body_html: it.body_html || null,
+      durataMin,
+    };
+    toast('Intervento copiato', 'success');
+  },
+
+  // Show the single-item "Incolla qui" menu at the clicked empty slot.
+  openSlotMenu(e, isoDate, sh, sm) {
+    if (!this._clipboard) return;
+    this._pasteSlot = { isoDate, sh, sm };
+    const menu = $('ctx-slot-menu');
+    if (!menu) return;
+    menu.classList.remove('hidden', 'closing');
+    const mw = 200, mh = 56;
+    menu.style.left = Math.min(e.clientX + 2, window.innerWidth  - mw - 8) + 'px';
+    menu.style.top  = Math.min(e.clientY + 2, window.innerHeight - mh - 8) + 'px';
+    const close = () => {
+      closeOverlay(menu);
+      document.removeEventListener('click', close);
+      document.removeEventListener('contextmenu', close);
+    };
+    setTimeout(() => {
+      document.addEventListener('click', close);
+      document.addEventListener('contextmenu', close);
+    }, 0);
+  },
+
+  // Create a copy of the clipboard at the chosen slot. Duration is preserved; if
+  // it crosses midnight the event is saved as-is (Exchange accepts it).
+  async pasteAt() {
+    closeOverlay('ctx-slot-menu');
+    const c = this._clipboard, slot = this._pasteSlot;
+    if (!c || !slot) return;
+    const primary = this.accounts?.find(a => a.is_primary) || this.accounts?.[0];
+    if (!primary?.email) { toast('Nessun account Exchange', 'error'); return; }
+    const pad = n => String(n).padStart(2, '0');
+    const start = new Date(`${slot.isoDate}T${pad(slot.sh)}:${pad(slot.sm)}:00`);
+    const end = new Date(start.getTime() + c.durataMin * 60000);
+    const crossDay = start.toDateString() !== end.toDateString();
+    const data = {
+      email: primary.email,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      nome_tecnico: c.nome_tecnico,
+      ragione_sociale: c.ragione_sociale,
+      descrizione: c.descrizione,
+      altro: c.altro,
+      luogo: c.luogo,
+      tipo_tariffa: c.tipo_tariffa,
+      tipo_fatturazione: c.tipo_fatturazione,
+      trasferta: c.trasferta,
+      durata: c.durata,
+      body_html: c.body_html,
+    };
+    try {
+      const created = await invoke('create_intervention', { data });
+      if (crossDay) toast('Incollato a cavallo di due giorni — prosegue il giorno dopo', 'warning');
+      else toast('Intervento incollato', 'success');
+      await this.loadInterventions(); // refreshes the calendar silently
+      if (this.currentView === 'calendar') Calendar.popItem(created?.exchange_item_id);
+    } catch(e) {
+      toast('Errore: ' + e, 'error');
+    }
   },
 
   _trasfertaFromCtx(mode) {

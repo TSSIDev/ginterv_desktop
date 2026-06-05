@@ -117,6 +117,16 @@ fn check_fault(xml: &str) -> Result<()> {
         }
         bail!("EWS SOAP Fault: {}", msg);
     }
+    if xml.contains(r#"ResponseClass="Error""#) {
+        let code = find_text(xml, "ResponseCode");
+        let msg = find_text(xml, "MessageText");
+        match (code.is_empty(), msg.is_empty()) {
+            (false, false) => bail!("EWS error {code}: {msg}"),
+            (false, true) => bail!("EWS error {code}"),
+            (true, false) => bail!("EWS error: {msg}"),
+            (true, true) => bail!("EWS error response"),
+        }
+    }
     Ok(())
 }
 
@@ -481,5 +491,25 @@ mod tests {
         assert!(parse_find_items(FAULT_RESPONSE).is_err());
         let err = parse_find_items(FAULT_RESPONSE).unwrap_err();
         assert!(err.to_string().contains("Access denied"), "err: {}", err);
+    }
+
+    #[test]
+    fn test_response_error_returns_error() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Body>
+    <m:FindItemResponse>
+      <m:ResponseMessages>
+        <m:FindItemResponseMessage ResponseClass="Error">
+          <m:MessageText>The specified calendar view range is invalid.</m:MessageText>
+          <m:ResponseCode>ErrorCalendarViewRangeTooBig</m:ResponseCode>
+        </m:FindItemResponseMessage>
+      </m:ResponseMessages>
+    </m:FindItemResponse>
+  </soap:Body>
+</soap:Envelope>"#;
+        let err = parse_find_items(xml).unwrap_err();
+        assert!(err.to_string().contains("ErrorCalendarViewRangeTooBig"), "err: {}", err);
     }
 }

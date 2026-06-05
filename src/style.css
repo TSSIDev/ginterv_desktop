@@ -312,12 +312,13 @@ textarea:focus-visible,
 .workspace {
   display: grid; grid-template-columns: var(--sidebar-w) 1fr 288px;
   overflow: hidden; position: relative;
+  transition: grid-template-columns .32s var(--ease);
 }
 .workspace.no-right { grid-template-columns: var(--sidebar-w) 1fr; }
 .workspace.collapse-left { grid-template-columns: 1fr 288px; }
 .workspace.collapse-left .sidebar { display: none; }
-.workspace.collapse-right { grid-template-columns: var(--sidebar-w) 1fr; }
-.workspace.collapse-right .detail-panel { display: none !important; }
+/* Keep the 3rd track present and collapse its width so it can animate open/closed */
+.workspace.collapse-right { grid-template-columns: var(--sidebar-w) 1fr 0px; }
 .workspace.full { grid-template-columns: 1fr; }
 .workspace.full .sidebar, .workspace.full .detail-panel { display: none !important; }
 
@@ -334,7 +335,8 @@ textarea:focus-visible,
 .side-nav { flex-shrink: 0; padding: 12px 14px 13px; }
 .nav-seg {
   position: relative;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 2px;
+  display: grid; grid-template-columns: auto auto; gap: 2px;
+  width: fit-content;
   background: var(--bg-elev); border: 1px solid var(--border);
   border-radius: var(--r-md); padding: 2px;
 }
@@ -350,7 +352,6 @@ textarea:focus-visible,
 .nav-seg-btn:hover { color: var(--text-1); }
 .nav-seg-btn.on {
   color: var(--accent-text);
-  font-weight: 650;
 }
 .nav-seg-btn.on svg { opacity: 1; }
 .sb-lbl {
@@ -385,6 +386,16 @@ textarea:focus-visible,
 .cal-zoom-out { animation: cal-zoom-out .26s var(--ease-expo); }
 @keyframes cal-zoom-in  { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes cal-zoom-out { from { opacity: 0; transform: scale(1.015); } to { opacity: 1; transform: none; } }
+.cal-slide-next { animation: cal-slide-next .21s var(--ease-expo); }
+.cal-slide-prev { animation: cal-slide-prev .21s var(--ease-expo); }
+@keyframes cal-slide-next {
+  from { opacity: .72; transform: translateX(34px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes cal-slide-prev {
+  from { opacity: .72; transform: translateX(-34px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 #view-calendar {
   position: relative;
   border-top-left-radius: var(--r-md);
@@ -417,8 +428,18 @@ textarea:focus-visible,
 /* ── Detail panel ──────────────────────────────────────────────────── */
 .detail-panel {
   background: var(--chrome-bg);
-  display: flex; flex-direction: column; overflow-y: auto;
+  display: flex; flex-direction: column; overflow: hidden;
   animation: ui-enter .2s var(--ease);
+}
+/* Children keep their width while the grid track collapses → clean wipe, no reflow */
+.detail-panel > #detail-empty,
+.detail-panel > #detail-fill { width: 288px; flex: 1; min-height: 0; }
+/* Opacity stays 1 so the width-wipe reveals fully-painted content (no blank frame);
+   only a small slide remains for life. */
+.detail-enter { animation: detail-enter .34s var(--ease); }
+@keyframes detail-enter {
+  from { transform: translateX(14px); }
+  to { transform: translateX(0); }
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────── */
@@ -614,6 +635,17 @@ details.fg-extra > summary::-webkit-details-marker { display: none; }
 @keyframes overlay-in { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; backdrop-filter: blur(4px); } }
 .modal-overlay.hidden { display: none; }
 .hidden { display: none !important; }
+
+/* Stronger frost behind New-intervention and Settings overlays */
+#modal-new, #modal-settings {
+  backdrop-filter: blur(9px) saturate(1.15);
+  -webkit-backdrop-filter: blur(9px) saturate(1.15);
+  animation-name: overlay-in-strong;
+}
+@keyframes overlay-in-strong {
+  from { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+  to   { opacity: 1; backdrop-filter: blur(9px) saturate(1.15); -webkit-backdrop-filter: blur(9px) saturate(1.15); }
+}
 .modal {
   background: var(--bg-surface); border: 1px solid transparent;
   border-radius: var(--r-xl); box-shadow: var(--sh-3);
@@ -841,7 +873,7 @@ body.theme-light {
 .wk-dh.today .wkh-dow { color: var(--accent); }
 .wkh-num { font-size: 17px; font-weight: 800; color: var(--text-1); line-height: 1; letter-spacing: -.03em; }
 .wk-dh.today .wkh-num { color: var(--accent); }
-.tgrid-wrap  { overflow-y: auto; flex: 1; }
+.tgrid-wrap  { overflow-x: hidden; overflow-y: auto; flex: 1; }
 .tgrid-inner { display: flex; }
 .tgrid-lbls  { width: 52px; flex-shrink: 0; }
 .tg-lbl {
@@ -865,11 +897,42 @@ body.theme-light {
   cursor: pointer; border: 1px solid transparent;
   background: color-mix(in oklch, currentColor 20%, var(--bg-surface));
   box-shadow: var(--sh-1);
-  transition: transform .14s var(--ease), box-shadow .14s var(--ease); overflow: hidden; z-index: 1;
-  animation: ui-cell-in .16s var(--ease) both;
+  transform-origin: top left;
+  transition: transform .14s var(--ease), box-shadow .14s var(--ease), background .14s var(--ease);
+  overflow: hidden; z-index: 1;
 }
 .iv:hover { transform: translateY(-1px); box-shadow: var(--sh-2); z-index: 10; }
 .iv.sel   { background: color-mix(in oklch, currentColor 30%, var(--bg-surface)); box-shadow: 0 0 0 2px currentColor, var(--sh-2); z-index: 10; }
+.iv.compact {
+  padding: 4px 7px;
+  display: flex;
+  align-items: center;
+}
+.iv-compact-line {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.iv-compact-time {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: currentColor;
+  opacity: .85;
+}
+.iv-compact-client {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 780;
+  color: var(--text-1);
+}
 .iv-t  { font-size: 10px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-weight: 600; opacity: .85; margin-bottom: 2px; letter-spacing: -.01em; }
 .iv-c  { font-size: 11px; font-weight: 700; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .iv-tp { font-size: 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -889,7 +952,31 @@ body.theme-light {
 }
 .iv-resize.top::after { margin-bottom: 0; margin-top: 1.5px; }
 body.cal-resizing { cursor: ns-resize; user-select: none; }
-body.cal-resizing .iv, body.cal-resizing .day-iv { transition: none; }
+body.cal-resizing .iv:not(.is-resizing),
+body.cal-resizing .day-iv:not(.is-resizing) { transition: none; }
+body.cal-moving { cursor: grabbing; user-select: none; }
+body.cal-moving .iv:not(.is-moving),
+body.cal-moving .day-iv:not(.is-moving) { transition: none; }
+.iv.is-resizing,
+.day-iv.is-resizing {
+  z-index: 30;
+  box-shadow: var(--sh-2);
+  transition:
+    top .08s var(--ease-fast),
+    height .08s var(--ease-fast),
+    transform .14s var(--ease),
+    box-shadow .14s var(--ease);
+}
+.iv.is-moving,
+.day-iv.is-moving {
+  z-index: 35;
+  cursor: grabbing;
+  box-shadow: var(--sh-2);
+  opacity: .92;
+  animation: none;
+  will-change: translate;
+  transition: box-shadow .12s var(--ease), opacity .12s var(--ease);
+}
 .cal-resize-bubble {
   position: fixed; z-index: 1000; pointer-events: none;
   padding: 4px 8px; border-radius: 7px;
@@ -904,11 +991,40 @@ body.cal-resizing .iv, body.cal-resizing .day-iv { transition: none; }
   cursor: pointer; border: 1px solid transparent;
   background: color-mix(in oklch, currentColor 20%, var(--bg-surface));
   box-shadow: var(--sh-1);
-  transition: transform .15s var(--ease), box-shadow .15s var(--ease); overflow: hidden;
-  animation: ui-cell-in .18s var(--ease) both;
+  transform-origin: top left;
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease), background .15s var(--ease);
+  overflow: hidden;
 }
 .day-iv:hover { transform: translateY(-1px); box-shadow: var(--sh-2); z-index: 10; }
 .day-iv.sel { background: color-mix(in oklch, currentColor 30%, var(--bg-surface)); box-shadow: 0 0 0 2px currentColor, var(--sh-2); z-index: 10; }
+
+/* Entry pop only on initial/navigation renders (toggled via .cell-anim on the grid
+   inner), NOT on data refreshes — stops delete/paste from re-popping every block. */
+.cell-anim .iv     { animation: ui-cell-in .16s var(--ease) both; }
+.cell-anim .day-iv { animation: ui-cell-in .18s var(--ease) both; }
+/* Selective coherent feedback: a newly-pasted block pops in; a deleted block fades out. */
+.iv.cell-pop, .day-iv.cell-pop { animation: cell-pop .34s var(--ease-expo); z-index: 11; }
+.iv.cell-out, .day-iv.cell-out { animation: cell-out .18s var(--ease) forwards; pointer-events: none; }
+@keyframes cell-pop { 0% { transform: scale(.92); opacity: .5; } 55% { transform: scale(1.04); } 100% { transform: none; opacity: 1; } }
+@keyframes cell-out { to { transform: scale(.86); opacity: 0; } }
+/* Cross-midnight split: square off the cut edge so head/continuation read as one event. */
+.iv.clip-end,   .day-iv.clip-end   { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.iv.clip-start, .day-iv.clip-start { border-top-left-radius: 0; border-top-right-radius: 0; }
+.iv-xday {
+  position: absolute; top: 3px; right: 3px; z-index: 2;
+  font-size: 9px; font-weight: 700; line-height: 1; letter-spacing: -.02em;
+  padding: 2px 4px; border-radius: 4px;
+  background: color-mix(in oklch, currentColor 26%, var(--bg-surface));
+  color: currentColor; pointer-events: none;
+}
+.day-iv.compact {
+  padding: 5px 9px;
+  display: flex;
+  align-items: center;
+}
+.iv-compact-line.day { gap: 7px; }
+.iv-compact-line.day .iv-compact-time { font-size: 11px; }
+.iv-compact-line.day .iv-compact-client { font-size: 12px; font-weight: 800; }
 .div-time   { font-size: 11px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-weight: 650; opacity: .85; margin-bottom: 4px; letter-spacing: -.01em; }
 .div-client { font-size: 13px; font-weight: 800; color: var(--text-1); letter-spacing: -.01em; margin-bottom: 3px; }
 .div-tipo   { font-size: 11px; color: var(--text-2); margin-bottom: 3px; }

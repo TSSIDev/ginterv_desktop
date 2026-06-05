@@ -1,0 +1,37 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8466f5"/>
+      <stop offset="1" stop-color="#5a3fd1"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#1c0f4a" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- brand tile -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#sheen)"/>
+
+  <!-- calendar -->
+  <g filter="url(#drop)">
+    <!-- binder rings -->
+    <rect x="384" y="276" width="44" height="104" rx="22" fill="#ffffff"/>
+    <rect x="596" y="276" width="44" height="104" rx="22" fill="#ffffff"/>
+
+    <!-- card body -->
+    <rect x="288" y="324" width="448" height="416" rx="56" fill="#ffffff"/>
+
+    <!-- header band -->
+    <path d="M288 380 a56 56 0 0 1 56 -56 h336 a56 56 0 0 1 56 56 v44 h-448 z" fill="#3f2bb3"/>
+
+    <!-- check mark -->
+    <path d="M392 566 L476 656 L646 478"
+          fill="none" stroke="#5a3fd1" stroke-width="58"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

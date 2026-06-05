@@ -42,6 +42,8 @@ const Calendar = (() => {
   let miniDate = new Date(today.getFullYear(), today.getMonth(), 1);
   let techFilter = 'all';
   let selectedItem = null;
+  // When false, renders skip the per-block entry pop (used for silent data refreshes).
+  let _renderAnim = true;
 
   // Drag-to-create state
   let _drag = null;
@@ -49,6 +51,7 @@ const Calendar = (() => {
 
   // Drag-to-expand (resize) state
   let _resize = null;
+  let _move = null;
   let _suppressClick = false; // swallow the click that follows a resize
 
   function _yToTime(relY, round = false) {
@@ -87,8 +90,7 @@ const Calendar = (() => {
     if (!dragged && selectedItem) {
       selectedItem = null;
       App.clearDetail();
-      if (currentView === 'week') renderWeek();
-      else if (currentView === 'day') renderDay();
+      _markSelectedBlock(null);
       return;
     }
     let eh = curH, em = curM;
@@ -168,6 +170,7 @@ const Calendar = (() => {
     document.body.classList.remove('cal-resizing');
     const r = _resize;
     if (r.bubble) r.bubble.remove();
+    if (r.block) r.block.classList.remove('is-resizing');
     _resize = null;
     _suppressClick = true;
     setTimeout(() => { _suppressClick = false; }, 300); // self-heal if no click fires
@@ -185,6 +188,91 @@ const Calendar = (() => {
     const newStart = r.edge === 'top' ? at(r.newStartTop) : r.startD;
     const newEnd   = r.edge === 'bottom' ? at(r.newEndTop) : r.endD;
     _saveResize(r.item, newStart, newEnd);
+  }
+
+  // ── Drag-to-move (appointment body → change start/end) ───────────────
+
+  function _colAtPoint(root, x, y) {
+    if (!root) return null;
+    return [...root.querySelectorAll('.day-col')].find(col => {
+      const r = col.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    }) || null;
+  }
+
+  function _updateMoveBubble(e, startTop, endTop, isoDate) {
+    const b = _move?.bubble;
+    if (!b) return;
+    const d = new Date(isoDate + 'T00:00:00');
+    const sMin = H_S * 60 + startTop;
+    const eMin = H_S * 60 + endTop;
+    b.textContent = `${DOW[d.getDay()]} ${d.getDate()} · ${hm(Math.floor(sMin / 60), sMin % 60)}–${hm(Math.floor(eMin / 60), eMin % 60)}`;
+    let x = e.clientX + 14, y = e.clientY - 12;
+    x = Math.min(x, window.innerWidth - b.offsetWidth - 6);
+    y = Math.max(6, Math.min(y, window.innerHeight - b.offsetHeight - 6));
+    b.style.left = x + 'px';
+    b.style.top = y + 'px';
+  }
+
+  function _onMoveMove(e) {
+    if (!_move) return;
+    const dx0 = e.clientX - _move.downX;
+    const dy0 = e.clientY - _move.downY;
+    if (!_move.active) {
+      if (Math.hypot(dx0, dy0) < 4) return;
+      _move.active = true;
+      _move.block.classList.add('is-moving');
+      _move.block.getAnimations?.().forEach(anim => anim.cancel());
+      document.body.classList.add('cal-moving');
+      _move.bubble = document.createElement('div');
+      _move.bubble.className = 'cal-resize-bubble cal-move-bubble';
+      document.body.appendChild(_move.bubble);
+      _dismissCreateModal();
+    }
+
+    const targetCol = _colAtPoint(_move.root, e.clientX, e.clientY) || _move.targetCol || _move.col;
+    const targetRect = targetCol.getBoundingClientRect();
+    const maxStart = Math.max(0, (H_E - H_S) * 60 - _move.durationMin);
+    const rawTop = (e.clientY - targetRect.top - _move.grabY) / H_PX * 60;
+    const startTop = Math.max(0, Math.min(maxStart, Math.round(rawTop / 15) * 15));
+    const endTop = startTop + _move.durationMin;
+    const isoDate = targetCol.dataset.isoDate || _move.isoDate;
+    const x = targetRect.left - _move.colRect.left;
+    const y = (startTop / 60) * H_PX + _move.topOffset - _move.origTopPx;
+    _move.targetCol = targetCol;
+    _move.newStartTop = startTop;
+    _move.newEndTop = endTop;
+    _move.newIsoDate = isoDate;
+    _move.block.style.translate = `${x}px ${y}px`;
+    _updateMoveBubble(e, startTop, endTop, isoDate);
+  }
+
+  function _onMoveUp() {
+    if (!_move) return;
+    document.removeEventListener('mousemove', _onMoveMove);
+    document.removeEventListener('mouseup', _onMoveUp);
+    document.body.classList.remove('cal-moving');
+    const m = _move;
+    if (m.bubble) m.bubble.remove();
+    m.block.classList.remove('is-moving');
+    m.block.style.translate = '';
+    _move = null;
+
+    if (!m.active) return;
+    _suppressClick = true;
+    setTimeout(() => { _suppressClick = false; }, 300);
+
+    const changed = m.newIsoDate !== m.isoDate || m.newStartTop !== m.origStartTop;
+    if (!changed) {
+      if (currentView === 'week') renderWeek(); else renderDay();
+      return;
+    }
+
+    const dayBase = new Date((m.newIsoDate || m.isoDate) + 'T00:00:00');
+    dayBase.setHours(H_S, 0, 0, 0);
+    const newStart = new Date(dayBase.getTime() + m.newStartTop * 60000);
+    const newEnd = new Date(dayBase.getTime() + m.newEndTop * 60000);
+    _saveResize(m.item, newStart, newEnd);
   }
 
   async function _saveResize(item, newStart, newEnd) {
@@ -227,6 +315,62 @@ const Calendar = (() => {
   }
 
   function getItems() { return (typeof App !== 'undefined' && App.interventions) || []; }
+
+  function calBlockId(raw) {
+    return raw?.exchange_item_id || [raw?.start_dt, raw?.end_dt, raw?.subject, raw?.ragione_sociale].filter(Boolean).join('|');
+  }
+
+  // Move the .sel marker to the block matching `item` (or clear it) without
+  // rebuilding the grid. data-cal-id values may contain special chars, so match
+  // by attribute value rather than a CSS selector.
+  function _markSelectedBlock(item) {
+    document.querySelectorAll('.iv.sel, .day-iv.sel').forEach(el => el.classList.remove('sel'));
+    const id = item && calBlockId(item);
+    if (!id) return;
+    document.querySelectorAll('.iv[data-cal-id], .day-iv[data-cal-id]').forEach(el => {
+      if (el.getAttribute('data-cal-id') === id) el.classList.add('sel');
+    });
+  }
+
+  function snapshotCalBlocks(root) {
+    if (!root) return new Map();
+    return new Map([...root.querySelectorAll('.iv[data-cal-id], .day-iv[data-cal-id]')]
+      .map(el => [el.dataset.calId, el.getBoundingClientRect()]));
+  }
+
+  function featherCalBlocks(root, before) {
+    if (!root || !before?.size || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    requestAnimationFrame(() => {
+      root.querySelectorAll('.iv[data-cal-id], .day-iv[data-cal-id]').forEach(el => {
+        const prev = before.get(el.dataset.calId);
+        if (!prev) return;
+        const next = el.getBoundingClientRect();
+        if (!next.width || !next.height) return;
+        const dx = prev.left - next.left;
+        const dy = prev.top - next.top;
+        const sx = prev.width / next.width;
+        const sy = prev.height / next.height;
+        if (Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx - 1) < .01 && Math.abs(sy - 1) < .01) return;
+        el.animate([
+          { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, transformOrigin: 'top left' },
+          { transform: 'translate(0, 0) scale(1, 1)', transformOrigin: 'top left' }
+        ], { duration: 185, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      });
+    });
+  }
+
+  function replayCalMotion(el, cls) {
+    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    el.classList.remove('cal-zoom-in', 'cal-zoom-out', 'cal-slide-next', 'cal-slide-prev');
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  function currentNavMotionTarget() {
+    if (currentView === 'week') return $('cal-tgrid-inner')?.querySelector('.tgrid-days');
+    if (currentView === 'day') return $('cal-day-inner')?.querySelector('.tgrid-days');
+    return $('cal-mth-grid');
+  }
 
   // Convert InterventionItem to display object
   function itemToDisplay(item) {
@@ -295,6 +439,37 @@ const Calendar = (() => {
       }
       return { ...ev, _col: col, _numCols: numCols };
     });
+  }
+
+  // Split display items into per-day segments so an event crossing midnight shows
+  // a head on its start day (clipped at 24:00) + a continuation on the next day
+  // (from 00:00). Returns segments belonging to `date`, ready for layoutItems.
+  function daySegments(date, items) {
+    const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+    const dayStartMs = dayStart.getTime();
+    const DAY_MIN = 24 * 60;
+    const out = [];
+    for (const iv of items) {
+      const startMs = iv.startD.getTime();
+      const endMs = startMs + iv.dur * 60000;
+      if (sameD(iv.startD, date)) {
+        const toMidnight = DAY_MIN - (iv.sh * 60 + iv.sm);
+        if (iv.dur <= toMidnight) out.push(iv);                          // fits in the day
+        else out.push({ ...iv, dur: toMidnight, _clipEnd: true });       // head → 24:00
+      } else if (startMs < dayStartMs && endMs > dayStartMs) {
+        const endMin = Math.round((endMs - dayStartMs) / 60000);         // continuation
+        const dur2 = Math.min(endMin, DAY_MIN);
+        if (dur2 > 0) out.push({ ...iv, sh: 0, sm: 0, dur: dur2, _clipStart: true, _clipEnd: endMin > DAY_MIN });
+      }
+    }
+    return out;
+  }
+
+  // Small corner badge marking a segment as part of a cross-day event.
+  function xdayTag(iv) {
+    if (iv._clipEnd && !iv._clipStart) return '<span class="iv-xday" title="Prosegue il giorno dopo">+1g</span>';
+    if (iv._clipStart) return '<span class="iv-xday" title="Iniziato il giorno prima">−1g</span>';
+    return '';
   }
 
   // ── Render helpers ───────────────────────────────────────────────────
@@ -453,7 +628,7 @@ const Calendar = (() => {
     let days = '';
     for (let d = 0; d < 7; d++) {
       const date = addD(weekStart, d);
-      const dayItems = items.filter(i => sameD(i.startD, date));
+      const dayItems = daySegments(date, items);
 
       let lines = '';
       for (let h = 0; h < nH; h++) {
@@ -473,15 +648,14 @@ const Calendar = (() => {
         const pct = 100 / iv._numCols;
         const lPct = iv._col * pct;
         const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
-        const innerHtml = ht < 26
-          ? `<div style="font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="opacity:.75;font-variant-numeric:tabular-nums">${timeStr}</span> <span style="font-weight:700;color:var(--text-1)">${iv.client}</span></div>`
-          : ht < 46
-          ? `<div class="iv-t">${timeStr}</div><div class="iv-c" style="font-size:10px">${iv.client}${iv.altro ? `<span class="iv-tp" style="display:inline;margin-left:4px;font-weight:400"> · ${iv.altro}</span>` : ''}</div>`
+        const isCompact = ht < 46;
+        const innerHtml = isCompact
+          ? `<div class="iv-compact-line"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
           : `<div class="iv-t">${timeStr}</div><div class="iv-c">${iv.client}</div>${iv.altro ? `<div class="iv-tp" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 60 && iv.tipo ? `<div class="iv-tp">${iv.tipo}</div>` : '')}<div class="iv-s">${sig}</div>`;
-        const padStyle = ht < 26 ? 'padding:2px 4px' : ht < 46 ? 'padding:3px 5px' : '';
-        blocks += `<div class="iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
+        blocks += `<div class="iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
+          onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${ht >= 44 ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div></div>`;
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
       });
 
       let nowLine = '';
@@ -491,11 +665,14 @@ const Calendar = (() => {
           nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
       }
 
-      days += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')">${lines}${blocks}${nowLine}</div>`;
+      days += `<div class="day-col" data-iso-date="${isoDay(date)}" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')" oncontextmenu="Calendar._ctxSlot(event,this,'${isoDay(date)}')">${lines}${blocks}${nowLine}</div>`;
     }
 
     const inner = $('cal-tgrid-inner');
+    const before = snapshotCalBlocks(inner);
     inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${days}</div>`;
+    inner.classList.toggle('cell-anim', _renderAnim);
+    featherCalBlocks(inner, before);
 
     const wrap = $('cal-tgrid-wrap');
     if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
@@ -505,7 +682,7 @@ const Calendar = (() => {
 
   function renderDay() {
     const nH = H_E - H_S, tot = nH * H_PX;
-    const items = getFilteredItems().filter(i => sameD(i.startD, currentDay));
+    const items = daySegments(currentDay, getFilteredItems());
 
     const showTechHeader = techFilter !== 'all';
     const daySiglas = showTechHeader
@@ -553,25 +730,27 @@ const Calendar = (() => {
         const pct = 100 / iv._numCols;
         const lPct = iv._col * pct;
         const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
-        const innerHtml = ht < 30
-          ? `<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3"><span style="opacity:.75;font-variant-numeric:tabular-nums">${timeStr}</span> <span style="font-weight:800;color:var(--text-1)">${iv.client}</span></div>`
-          : ht < 52
-          ? `<div class="div-time">${timeStr}</div><div class="div-client" style="font-size:11px">${iv.client}${iv.altro ? `<span class="div-tipo" style="display:inline;margin-left:5px;font-weight:400"> · ${iv.altro}</span>` : ''}</div>`
+        const isCompact = ht < 52;
+        const innerHtml = isCompact
+          ? `<div class="iv-compact-line day"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
           : `<div class="div-time">${timeStr}</div><div class="div-client">${iv.client}</div>${iv.altro ? `<div class="div-tipo" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 68 && iv.tipo ? `<div class="div-tipo">${iv.tipo}</div>` : '')}`;
-        const padStyle = ht < 30 ? 'padding:3px 6px' : ht < 52 ? 'padding:5px 8px' : '';
-        blocks += `<div class="day-iv${isSel ? ' sel' : ''}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px);${padStyle}"
+        blocks += `<div class="day-iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
+          onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${ht >= 44 ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div></div>`;
+          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
       });
       let nowLine = '';
       const n = new Date(), h = n.getHours(), m = n.getMinutes();
       if (sameD(currentDay, today) && h >= H_S && h < H_E)
         nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
-      cols += `<div class="day-col" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(currentDay)}')">${lines}${blocks}${nowLine}</div>`;
+      cols += `<div class="day-col" data-iso-date="${isoDay(currentDay)}" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(currentDay)}')" oncontextmenu="Calendar._ctxSlot(event,this,'${isoDay(currentDay)}')">${lines}${blocks}${nowLine}</div>`;
     });
 
     const inner = $('cal-day-inner');
+    const before = snapshotCalBlocks(inner);
     inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${cols}</div>`;
+    inner.classList.toggle('cell-anim', _renderAnim);
+    featherCalBlocks(inner, before);
 
     const wrap = $('cal-day-wrap');
     if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
@@ -640,6 +819,9 @@ const Calendar = (() => {
     if (!fill) return;
     fill.style.cssText = 'display:flex;flex:1;overflow:hidden;flex-direction:column';
     fill.innerHTML = renderInterventionDetail(item, { trasferta: true, close: true });
+    fill.classList.remove('detail-enter');
+    void fill.offsetWidth;
+    fill.classList.add('detail-enter');
   }
 
   // ── Month detail: day list ────────────────────────────────────────────
@@ -675,6 +857,9 @@ const Calendar = (() => {
         <button class="btn primary" style="width:100%;justify-content:center"
           onclick="App.navigate('new')">${GIIcon('plus', 13)}Nuovo intervento</button>
       </div>`;
+    fill.classList.remove('detail-enter');
+    void fill.offsetWidth;
+    fill.classList.add('detail-enter');
   }
 
   // ── Public API ───────────────────────────────────────────────────────
@@ -744,6 +929,7 @@ const Calendar = (() => {
       selectedItem = null;
       App.clearDetail();
       renderAll();
+      replayCalMotion(currentNavMotionTarget(), delta > 0 ? 'cal-slide-next' : 'cal-slide-prev');
     },
 
     goToday() {
@@ -767,10 +953,7 @@ const Calendar = (() => {
       renderAll();
       const shown = $(`cal-${view}-view`);
       if (shown) {
-        const cls = zoomIn ? 'cal-zoom-in' : 'cal-zoom-out';
-        shown.classList.remove('cal-zoom-in', 'cal-zoom-out');
-        void shown.offsetWidth;
-        shown.classList.add(cls);
+        replayCalMotion(shown, zoomIn ? 'cal-zoom-in' : 'cal-zoom-out');
       }
     },
 
@@ -812,6 +995,43 @@ const Calendar = (() => {
       }
     },
 
+    _moveDown(e, itemJson) {
+      if (e.button !== 0 || _resize || _drag || _move || e.target.closest('.iv-resize')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
+      const block = e.target.closest('.iv, .day-iv');
+      const col = e.target.closest('.day-col');
+      const root = block?.closest('#cal-tgrid-inner, #cal-day-inner');
+      if (!block || !col || !root) return;
+
+      const startD = new Date(item.start_dt);
+      const endD = item.end_dt ? new Date(item.end_dt) : new Date(startD.getTime() + 3600000);
+      const durationMin = Math.max(15, Math.round((endD - startD) / 60000));
+      const startTop = (startD.getHours() - H_S) * 60 + startD.getMinutes();
+      const blockRect = block.getBoundingClientRect();
+      const colRect = col.getBoundingClientRect();
+      const origTopPx = parseFloat(block.style.top) || block.offsetTop || 0;
+      _move = {
+        item, block, col, root, startD, endD, durationMin,
+        isoDate: col.dataset.isoDate || isoDay(startD),
+        downX: e.clientX, downY: e.clientY,
+        grabY: e.clientY - blockRect.top,
+        colRect,
+        origTopPx,
+        topOffset: origTopPx - (startTop / 60) * H_PX,
+        origStartTop: startTop,
+        newStartTop: startTop,
+        newEndTop: startTop + durationMin,
+        newIsoDate: col.dataset.isoDate || isoDay(startD),
+        targetCol: col,
+        active: false,
+        bubble: null,
+      };
+      document.addEventListener('mousemove', _onMoveMove);
+      document.addEventListener('mouseup', _onMoveUp);
+    },
+
     _resizeDown(e, itemJson, edge) {
       e.preventDefault();
       e.stopPropagation(); // don't start a column drag-to-create
@@ -819,6 +1039,7 @@ const Calendar = (() => {
       const block = e.target.closest('.iv, .day-iv');
       const col = e.target.closest('.day-col');
       if (!block || !col) return;
+      block.classList.add('is-resizing');
       const startD = new Date(item.start_dt);
       const endD = item.end_dt ? new Date(item.end_dt) : new Date(startD.getTime() + 3600000);
       const startTop = (startD.getHours() - H_S) * 60 + startD.getMinutes();
@@ -844,16 +1065,15 @@ const Calendar = (() => {
       const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
       selectedItem = item;
       App.showDetail(item);
-      // Re-render to update selected state
-      if (currentView === 'week') renderWeek();
-      else if (currentView === 'day') renderDay();
+      // Toggle the .sel class in place instead of re-rendering the whole grid
+      // (a full re-render rebuilds every event block → one-frame flash).
+      _markSelectedBlock(item);
     },
 
     _deselect() {
       selectedItem = null;
       App.clearDetail();
-      if (currentView === 'week') renderWeek();
-      else if (currentView === 'day') renderDay();
+      _markSelectedBlock(null);
     },
 
     _setTech(sigla) {
@@ -862,7 +1082,11 @@ const Calendar = (() => {
     },
 
     _colDown(e, col, isoDate) {
+      if (e.button !== 0) return; // only left button — right-click opens the paste menu
       if (e.target.closest('.iv, .day-iv')) return;
+      // If a context menu is open, this click is dismissing it → don't start a create.
+      const m1 = $('ctx-menu'), m2 = $('ctx-slot-menu');
+      if ((m1 && !m1.classList.contains('hidden')) || (m2 && !m2.classList.contains('hidden'))) return;
       e.preventDefault();
       const rect = col.getBoundingClientRect();
       const [sh, sm] = _yToTime(e.clientY - rect.top);
@@ -876,6 +1100,16 @@ const Calendar = (() => {
       document.addEventListener('mouseup',   _onDragUp);
     },
 
+    // Right-click on an empty slot → offer "Incolla qui" at the clicked time.
+    _ctxSlot(e, col, isoDate) {
+      if (e.target.closest('.iv, .day-iv')) return; // appointment menu handles its own
+      e.preventDefault();
+      if (!App._clipboard) return; // nothing copied → no menu
+      const rect = col.getBoundingClientRect();
+      const [sh, sm] = _yToTime(e.clientY - rect.top, true);
+      App.openSlotMenu(e, isoDate, sh, sm);
+    },
+
     _confirmCreate() {
       if (!_pendingCreate) return;
       const { isoDate, sh, sm, eh, em } = _pendingCreate;
@@ -887,6 +1121,29 @@ const Calendar = (() => {
       _dismissCreateModal();
     },
 
-    refresh() { renderAll(); },
+    refresh() { _renderAnim = false; renderAll(); _renderAnim = true; },
+
+    // Pop a single block in (e.g. just-pasted item). id = exchange_item_id / cal-id.
+    popItem(id) {
+      if (!id) return;
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.iv[data-cal-id], .day-iv[data-cal-id]').forEach(el => {
+          if (el.getAttribute('data-cal-id') !== id) return;
+          el.classList.remove('cell-pop'); void el.offsetWidth; el.classList.add('cell-pop');
+        });
+      });
+    },
+
+    // Fade a block out before its data is removed. Resolves when the exit anim ends.
+    animateOut(id) {
+      return new Promise(res => {
+        if (!id || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return res();
+        const els = [...document.querySelectorAll('.iv[data-cal-id], .day-iv[data-cal-id]')]
+          .filter(el => el.getAttribute('data-cal-id') === id);
+        if (!els.length) return res();
+        els.forEach(el => el.classList.add('cell-out'));
+        setTimeout(res, 180);
+      });
+    },
   };
 })();

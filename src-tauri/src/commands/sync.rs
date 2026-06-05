@@ -23,7 +23,8 @@ pub async fn trigger_sync(
 
     let server = acc.server.unwrap_or_default();
     let domain = acc.domain;
-    let client = EwsClient::connect(&server, &email, domain.as_deref()).map_err(|e| e.to_string())?;
+    let client =
+        EwsClient::connect(&server, &email, domain.as_deref()).map_err(|e| e.to_string())?;
 
     {
         let mut map = sync_status.lock().map_err(|e| e.to_string())?;
@@ -79,16 +80,23 @@ pub async fn flush_queue(
 ) -> Result<i64, String> {
     let acc = {
         let conn = state.db.0.lock().map_err(|e| e.to_string())?;
-        cache::list_accounts(&conn).map_err(|e| e.to_string())?
-            .into_iter().find(|a| a.email == email)
+        cache::list_accounts(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|a| a.email == email)
             .ok_or_else(|| format!("Account {} non trovato", email))?
     };
     let server = acc.server.unwrap_or_default();
-    let client = EwsClient::connect(&server, &email, acc.domain.as_deref()).map_err(|e| e.to_string())?;
+    let client =
+        EwsClient::connect(&server, &email, acc.domain.as_deref()).map_err(|e| e.to_string())?;
     let state_arc = Arc::new(AppState {
-        db: crate::db::DbConn(std::sync::Mutex::new(crate::db::open().map_err(|e| e.to_string())?)),
+        db: crate::db::DbConn(std::sync::Mutex::new(
+            crate::db::open().map_err(|e| e.to_string())?,
+        )),
     });
-    flush::flush_pending(&client, &email, &state_arc, Some(&app_handle)).await.map_err(|e| e.to_string())
+    flush::flush_pending(&client, &email, &state_arc, Some(&app_handle))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -111,11 +119,18 @@ pub async fn list_conflicts(
     };
     let acc = {
         let conn = state.db.0.lock().map_err(|e| e.to_string())?;
-        cache::list_accounts(&conn).map_err(|e| e.to_string())?
-            .into_iter().find(|a| a.email == email)
+        cache::list_accounts(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|a| a.email == email)
     };
     let client = acc.as_ref().and_then(|a| {
-        EwsClient::connect(&a.server.clone().unwrap_or_default(), &email, a.domain.as_deref()).ok()
+        EwsClient::connect(
+            &a.server.clone().unwrap_or_default(),
+            &email,
+            a.domain.as_deref(),
+        )
+        .ok()
     });
 
     let mut out = Vec::new();
@@ -123,14 +138,23 @@ pub async fn list_conflicts(
         let item_id = op.exchange_item_id.clone().unwrap_or_default();
         let mine = {
             let conn = state.db.0.lock().map_err(|e| e.to_string())?;
-            cache::get_by_item_id(&conn, &email, &item_id).ok().flatten().map(Into::into)
+            cache::get_by_item_id(&conn, &email, &item_id)
+                .ok()
+                .flatten()
+                .map(Into::into)
         };
         let server = client.as_ref().and_then(|c| {
             let base = op.base_change_key.as_deref().unwrap_or("");
-            c.call_message("GetItem", &soap::get_item(&item_id, base)).ok()
+            c.call_action("GetItem", &soap::get_item(&item_id, base))
+                .ok()
                 .and_then(|xml| parse::parse_get_item(&xml).ok())
         });
-        out.push(ConflictView { op_id: op.id, op_type: op.op_type, mine, server });
+        out.push(ConflictView {
+            op_id: op.id,
+            op_type: op.op_type,
+            mine,
+            server,
+        });
     }
     Ok(out)
 }
@@ -146,31 +170,42 @@ pub async fn resolve_conflict(
 ) -> Result<(), String> {
     let op = {
         let conn = state.db.0.lock().map_err(|e| e.to_string())?;
-        queue::get(&conn, op_id).map_err(|e| e.to_string())?
+        queue::get(&conn, op_id)
+            .map_err(|e| e.to_string())?
             .ok_or_else(|| "Op non trovata".to_string())?
     };
     let item_id = op.exchange_item_id.clone().unwrap_or_default();
     let acc = {
         let conn = state.db.0.lock().map_err(|e| e.to_string())?;
-        cache::list_accounts(&conn).map_err(|e| e.to_string())?
-            .into_iter().find(|a| a.email == email)
+        cache::list_accounts(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|a| a.email == email)
             .ok_or_else(|| "Account non trovato".to_string())?
     };
-    let client = EwsClient::connect(&acc.server.clone().unwrap_or_default(), &email, acc.domain.as_deref())
-        .map_err(|e| e.to_string())?;
+    let client = EwsClient::connect(
+        &acc.server.clone().unwrap_or_default(),
+        &email,
+        acc.domain.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
 
     // Read the current server change_key to rebase on.
     let server_ck = client
-        .call_message("GetItem", &soap::get_item(&item_id, op.base_change_key.as_deref().unwrap_or("")))
+        .call_action(
+            "GetItem",
+            &soap::get_item(&item_id, op.base_change_key.as_deref().unwrap_or("")),
+        )
         .ok()
         .and_then(|xml| parse::parse_get_item(&xml).ok())
         .map(|i| i.change_key);
 
     if choice == "server" {
         // Discard local op; pull server version into cache (clearing pending).
-        if let Ok(xml) = client
-            .call_message("GetItem", &soap::get_item(&item_id, server_ck.as_deref().unwrap_or("")))
-        {
+        if let Ok(xml) = client.call_action(
+            "GetItem",
+            &soap::get_item(&item_id, server_ck.as_deref().unwrap_or("")),
+        ) {
             if let Ok(item) = parse::parse_get_item(&xml) {
                 if let Ok(conn) = state.db.0.lock() {
                     let mut cached = cache::CachedItem::from_item(&item, &email);
@@ -189,9 +224,13 @@ pub async fn resolve_conflict(
             queue::rebase_pending(&conn, op_id, &ck).map_err(|e| e.to_string())?;
         }
         let state_arc = Arc::new(AppState {
-            db: crate::db::DbConn(std::sync::Mutex::new(crate::db::open().map_err(|e| e.to_string())?)),
+            db: crate::db::DbConn(std::sync::Mutex::new(
+                crate::db::open().map_err(|e| e.to_string())?,
+            )),
         });
-        flush::flush_pending(&client, &email, &state_arc, Some(&app_handle)).await.map_err(|e| e.to_string())?;
+        flush::flush_pending(&client, &email, &state_arc, Some(&app_handle))
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
