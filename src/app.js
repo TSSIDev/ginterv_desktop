@@ -601,6 +601,29 @@ const App = {
   _syncing: false,
   _freshTimer: null,
 
+  // Trasparenze acriliche: ON di default solo su Windows; override utente in localStorage.
+  _transparencyEnabled() {
+    const explicit = localStorage.getItem('gi-transparency'); // 'on' | 'off' | null
+    if (explicit === 'on') return true;
+    if (explicit === 'off') return false;
+    return navigator.userAgent.includes('Windows');
+  },
+
+  async _applyTransparency() {
+    const enabled = this._transparencyEnabled();
+    document.body.classList.toggle('opaque', !enabled);
+    // Sincronizza l'effetto nativo della finestra Tauri (difensivo: può non esistere).
+    try {
+      const win = WinControls._win();
+      if (!win) return;
+      if (enabled) {
+        await win.setEffects({ effects: ['acrylic'], state: 'active' });
+      } else {
+        await win.clearEffects();
+      }
+    } catch (_) { /* API finestra non disponibile: la classe CSS resta la verità visiva */ }
+  },
+
   async init() {
     // Apply saved theme
     const theme = localStorage.getItem('gi-theme');
@@ -610,6 +633,9 @@ const App = {
     // Apply saved accent hue (set on :root so both themes resolve it)
     const accentHue = localStorage.getItem('gi-accent-hue');
     if (accentHue) document.documentElement.style.setProperty('--accent-hue', accentHue);
+
+    // Applica preferenza trasparenze (default per piattaforma)
+    this._applyTransparency();
 
     // Keyboard shortcut Ctrl+K
     document.addEventListener('keydown', e => {

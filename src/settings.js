@@ -501,6 +501,19 @@ const Settings = {
           </div>
           <div class="st-accent-list">${swatches}</div>
         </div>
+        <div class="st-setting-row">
+          <div>
+            <div class="st-setting-label">Trasparenze</div>
+            <div class="st-setting-desc">Sfocature acriliche dietro le superfici. Consigliato solo su Windows.</div>
+          </div>
+          <button class="st-theme-switch${App._transparencyEnabled() ? ' light' : ''}" type="button" role="switch"
+            aria-checked="${App._transparencyEnabled() ? 'true' : 'false'}" aria-label="Trasparenze"
+            onclick="Settings._toggleTransparency()">
+            <span class="st-theme-thumb"></span>
+            <span class="st-theme-option st-theme-dark">Off</span>
+            <span class="st-theme-option st-theme-light">On</span>
+          </button>
+        </div>
       </div>
     `;
   },
@@ -531,6 +544,13 @@ const Settings = {
     }
     const desc = document.querySelector('.st-setting-desc');
     if (desc) desc.textContent = `Usa il tema ${isLight ? 'chiaro' : 'scuro'} per l'interfaccia.`;
+  },
+
+  _toggleTransparency() {
+    const next = App._transparencyEnabled() ? 'off' : 'on';
+    localStorage.setItem('gi-transparency', next);
+    App._applyTransparency();
+    this._renderAspetto($('st-body')); // refresh switch state
   },
 
   // ── Dropdown data ─────────────────────────────────────────────────────
