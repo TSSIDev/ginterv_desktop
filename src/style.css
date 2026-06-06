@@ -81,6 +81,25 @@ html, body {
   font-feature-settings: 'cv05' 1, 'cv11' 1;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow: hidden;
 }
+
+/* ── Modalità opaca (no acrilico) — auto fuori da Windows, o scelta utente ──
+   --bg-base / --bg-panel / --border sono definiti sia in :root (dark) sia in
+   body.theme-light, quindi questo blocco copre entrambi i temi. */
+body.opaque {
+  --chrome-bg: var(--bg-panel);
+  --chrome-border: var(--border);
+  background: var(--bg-base);
+}
+/* il blur acrilico è la parte rotta/costosa su KDE/Wayland: spegnilo */
+body.opaque .modal-overlay,
+body.opaque #modal-new,
+body.opaque #modal-settings,
+body.opaque .new-modal,
+body.opaque .settings-modal {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .tnum { font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font: inherit; }
 button:focus-visible,
