@@ -64,6 +64,11 @@ const Search = {
     this._render();
   },
 
+  // Esporta i risultati correnti (filtri inclusi) in iCalendar.
+  exportIcs() {
+    App.exportIcs(this._applyFilters(App.interventions || []), 'interventi.ics');
+  },
+
   reset() {
     this._q = '';
     this._clientQ = '';

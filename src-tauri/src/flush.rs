@@ -43,7 +43,11 @@ pub async fn flush_pending(
     window: Option<&tauri::AppHandle>,
 ) -> anyhow::Result<i64> {
     let ops = {
-        let conn = state.db.0.lock().unwrap();
+        let conn = state
+            .db
+            .0
+            .lock()
+            .map_err(|_| anyhow::anyhow!("DB lock poisoned"))?;
         queue::list_pending(&conn, email)?
     };
 

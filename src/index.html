@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css?v=59">
+<link rel="stylesheet" href="style.css?v=62">
 </head>
 <body>
 
@@ -214,7 +214,10 @@
 
         <!-- Results -->
         <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-          <div style="padding:10px 14px 6px;font-size:11px;color:var(--text-3)" id="srch-count"></div>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px">
+            <div style="font-size:11px;color:var(--text-3);flex:1" id="srch-count"></div>
+            <button class="btn" style="height:24px;font-size:11px;padding:0 10px" onclick="Search.exportIcs()" title="Esporta i risultati filtrati in formato iCalendar">Esporta .ics</button>
+          </div>
           <div id="srch-list" style="flex:1;overflow-y:auto;padding-top:6px"></div>
         </div>
 
@@ -237,6 +240,10 @@
     <div class="sb-item">
       <div class="sb-dot a" id="sb-dot"></div>
       <span id="sb-sync-text">Pronto</span>
+    </div>
+    <div class="sb-item sb-queue hidden" id="sb-queue" onclick="App.toggleQueuePopover()"
+         title="Modifiche locali in attesa di sincronizzazione">
+      <span class="sb-queue-dot"></span><span id="sb-queue-text"></span>
     </div>
     <div class="sb-sp"></div>
     <div class="sb-item" id="sb-account">—</div>
@@ -549,6 +556,12 @@
         </div>
         <div class="slider-labels"><span>15 min</span><span>4h</span></div>
       </div>
+      <label class="chk-row" for="trasferta-keep-altro">
+        <input type="checkbox" id="trasferta-keep-altro"
+               onchange="localStorage.setItem('gi_trasferta_keep_altro', this.checked)">
+        <span>Conserva dettaglio breve</span>
+      </label>
+      <div class="fg-hint">Riusa il dettaglio breve dell'intervento di riferimento nel soggetto della trasferta.</div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="App.closeModal('trasferta')">Annulla</button>
@@ -570,11 +583,23 @@
   </div>
 </div>
 
+<div id="queue-pop" class="queue-pop hidden"></div>
+<div id="cal-peek" class="cal-peek hidden" aria-hidden="true"></div>
+
+<div id="cmdk" class="modal-overlay hidden" onclick="if(event.target===this)App.closeCmdk()">
+  <div class="cmdk-card" role="dialog" aria-label="Command palette">
+    <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Cerca o digita un comando…"
+           autocomplete="off" spellcheck="false"
+           oninput="App._cmdkFilter(this.value)" onkeydown="App._cmdkKey(event)">
+    <div id="cmdk-list" class="cmdk-list" role="listbox"></div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="vendor/purify.min.js?v=1"></script>
-<script src="search.js?v=8"></script>
-<script src="settings.js?v=14"></script>
-<script src="calendar.js?v=31"></script>
-<script src="app.js?v=41"></script>
+<script src="search.js?v=9"></script>
+<script src="settings.js?v=15"></script>
+<script src="calendar.js?v=33"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

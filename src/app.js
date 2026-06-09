@@ -84,6 +84,7 @@ function GIIcon(name, size = 12) {
     route: '<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M12 19h1a5 5 0 0 0 5-5V8"/><path d="M6 16v-1a5 5 0 0 1 5-5h1"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/>',
     mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
     sign: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -567,6 +568,7 @@ function renderInterventionDetail(item, opts = {}) {
           ${opts.trasferta ? `<button class="abtn" onclick="App.openTrasfertaForDetail(${iS})">${GIIcon('route')}Trasferta</button>` : ''}
           <button class="abtn" onclick="App.openPdfModal(${iS})">${GIIcon('file')}PDF</button>
           <button class="abtn" onclick="App.openEmailModal(${iS})">${GIIcon('mail')}Email</button>
+          <button class="abtn" onclick="App.exportIcsItem(${iS})">${GIIcon('cal')}iCal</button>
         </div>
         <div class="act-row danger-row">
           <button class="abtn danger" onclick="App.confirmDelete(${iS})">${GIIcon('trash')}Elimina</button>
@@ -624,11 +626,22 @@ const App = {
     } catch (_) { /* API finestra non disponibile: la classe CSS resta la verità visiva */ }
   },
 
+  // Tema: 'light' | 'dark' | 'auto' (segue il sistema). Default storico: light.
+  themePref() { return localStorage.getItem('gi-theme') || 'light'; },
+
+  applyThemePref() {
+    const pref = this.themePref();
+    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isLight = pref === 'auto' ? !sysDark : pref !== 'dark';
+    document.body.classList.toggle('theme-light', isLight);
+  },
+
   async init() {
-    // Apply saved theme
-    const theme = localStorage.getItem('gi-theme');
-    const lightTheme = theme !== 'dark';
-    document.body.classList.toggle('theme-light', lightTheme);
+    // Apply saved theme (e segui il sistema quando il pref è 'auto')
+    this.applyThemePref();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (this.themePref() === 'auto') this.applyThemePref();
+    });
 
     // Apply saved accent hue (set on :root so both themes resolve it)
     const accentHue = localStorage.getItem('gi-accent-hue');
@@ -645,8 +658,7 @@ const App = {
       const newModalOpen = !$('modal-new')?.classList.contains('hidden');
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
-        this.navigate('search');
-        $('global-search-input')?.focus();
+        this.openCmdk();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newModalOpen) {
         e.preventDefault();
@@ -658,10 +670,19 @@ const App = {
         this.dismissCalendarCreate();
         closeOverlay('ctx-menu');
       }
-      if (!isEditable && this.currentView === 'calendar' && !newModalOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-          e.preventDefault();
-          Calendar.nav(e.key === 'ArrowRight' ? 1 : -1);
+      const cmdkOpen = !$('cmdk')?.classList.contains('hidden');
+      if (!isEditable && !newModalOpen && !cmdkOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === 't') { e.preventDefault(); this.navigate('calendar'); Calendar.goToday(); }
+        if (k === 'n') { e.preventDefault(); this.openNewModal(); }
+        if (this.currentView === 'calendar') {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            Calendar.nav(e.key === 'ArrowRight' ? 1 : -1);
+          }
+          if (e.key === '1') Calendar.setView('month');
+          if (e.key === '2') Calendar.setView('week');
+          if (e.key === '3') Calendar.setView('day');
         }
       }
     });
@@ -711,6 +732,10 @@ const App = {
     this.clearDetail();
     this.loadInterventions();
     this.checkConflicts();
+    // Cold-boot sync: the backend loop sleeps a full interval before its first
+    // pass, and the window may already be focused when the focus listener
+    // attaches — kick one sync explicitly.
+    this.maybeSyncOnFocus();
     // Set current account in statusbar
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (primary) $('sb-account').textContent = primary.email;
@@ -722,8 +747,8 @@ const App = {
     el.innerHTML = this.accounts.map(a =>
       `<div style="padding:5px 0;display:flex;align-items:center;gap:8px">
         <div class="sb-dot g"></div>
-        <div><div style="font-weight:600;font-size:12px">${a.sigla || '—'}</div>
-        <div style="font-size:10px;color:var(--text-3)">${a.email}</div></div>
+        <div><div style="font-weight:600;font-size:12px">${escHtml(a.sigla || '—')}</div>
+        <div style="font-size:10px;color:var(--text-3)">${escHtml(a.email)}</div></div>
        </div>`
     ).join('');
   },
@@ -779,9 +804,10 @@ const App = {
   },
 
   toggleTheme() {
-    document.body.classList.toggle('theme-light');
-    const light = document.body.classList.contains('theme-light');
+    // Toggle rapido: forza il tema opposto a quello visibile (esce da 'auto').
+    const light = !document.body.classList.contains('theme-light');
     localStorage.setItem('gi-theme', light ? 'light' : 'dark');
+    this.applyThemePref();
   },
 
   // ── Dropdown data ─────────────────────────────────────────────────
@@ -1072,6 +1098,7 @@ const App = {
   },
 
   async loadInterventions() {
+    this.refreshQueueBadge(); // fire-and-forget: badge coda offline in statusbar
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (!primary) { this.renderList([]); return; }
     const now = new Date();
@@ -1094,6 +1121,12 @@ const App = {
     const container = $('list-container');
     const count = $('list-count');
     if (!items.length) {
+      // Cache vuota ma sync in corso → skeleton, non "vuoto": i dati stanno arrivando.
+      if (this._syncing && !this._lastSyncAt) {
+        count.textContent = 'Sincronizzazione…';
+        container.innerHTML = Array.from({ length: 6 }, () => '<div class="skel-card"></div>').join('');
+        return;
+      }
       count.textContent = 'Nessun intervento';
       container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px">Nessun intervento nel periodo selezionato</div>';
       return;
@@ -1184,6 +1217,236 @@ const App = {
     $('workspace')?.classList.add('collapse-right');
   },
 
+  // ── Command palette (Ctrl+K) ──────────────────────────────────────
+  _cmdkSel: 0,
+  _cmdkItems: [],
+  _cmdkActions() {
+    return [
+      { lbl: 'Vai a oggi', kbd: 'T', run: () => { this.navigate('calendar'); Calendar.goToday(); } },
+      { lbl: 'Nuovo intervento', kbd: 'N', run: () => this.openNewModal() },
+      { lbl: 'Vista mese', kbd: '1', run: () => { this.navigate('calendar'); Calendar.setView('month'); } },
+      { lbl: 'Vista settimana', kbd: '2', run: () => { this.navigate('calendar'); Calendar.setView('week'); } },
+      { lbl: 'Vista giorno', kbd: '3', run: () => { this.navigate('calendar'); Calendar.setView('day'); } },
+      { lbl: 'Ricerca avanzata', run: () => { this.navigate('search'); $('global-search-input')?.focus(); } },
+      { lbl: 'Sincronizza ora', run: () => this.triggerSync() },
+      { lbl: 'Cambia tema', run: () => this.toggleTheme() },
+      { lbl: 'Impostazioni', run: () => this.openSettingsModal() },
+    ];
+  },
+
+  openCmdk() {
+    const ov = $('cmdk');
+    if (!ov) return;
+    ov.classList.remove('hidden', 'closing');
+    const inp = $('cmdk-input');
+    inp.value = '';
+    this._cmdkFilter('');
+    inp.focus();
+  },
+
+  closeCmdk() { closeOverlay('cmdk'); },
+
+  _cmdkFilter(q) {
+    const query = q.trim().toLowerCase();
+    const words = query.split(/\s+/).filter(Boolean);
+    const items = this._cmdkActions().filter(a =>
+      words.every(w => a.lbl.toLowerCase().includes(w))
+    );
+    if (query) {
+      items.push({
+        lbl: `Cerca «${q.trim()}» negli interventi`, kbd: '↵',
+        run: () => {
+          this.navigate('search');
+          const gi = $('global-search-input');
+          if (gi) gi.value = q.trim();
+          Search.query(q.trim());
+        },
+      });
+    }
+    this._cmdkItems = items;
+    this._cmdkSel = 0;
+    this._cmdkRender();
+  },
+
+  _cmdkRender() {
+    const list = $('cmdk-list');
+    if (!this._cmdkItems.length) {
+      list.innerHTML = '<div class="cmdk-empty">Nessun comando</div>';
+      return;
+    }
+    list.innerHTML = this._cmdkItems.map((a, i) =>
+      `<div class="cmdk-item${i === this._cmdkSel ? ' sel' : ''}" role="option" aria-selected="${i === this._cmdkSel}"
+         onclick="App._cmdkRun(${i})" onmousemove="App._cmdkHover(${i})">
+         <span>${escHtml(a.lbl)}</span>${a.kbd ? `<span class="cmdk-kbd">${a.kbd}</span>` : ''}
+       </div>`).join('');
+    list.querySelector('.cmdk-item.sel')?.scrollIntoView({ block: 'nearest' });
+  },
+
+  _cmdkHover(i) {
+    if (this._cmdkSel === i) return;
+    this._cmdkSel = i;
+    this._cmdkRender();
+  },
+
+  _cmdkKey(e) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this._cmdkSel = Math.min(this._cmdkSel + 1, this._cmdkItems.length - 1);
+      this._cmdkRender();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this._cmdkSel = Math.max(this._cmdkSel - 1, 0);
+      this._cmdkRender();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      this._cmdkRun(this._cmdkSel);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.closeCmdk();
+    }
+  },
+
+  _cmdkRun(i) {
+    const a = this._cmdkItems[i];
+    if (!a) return;
+    this.closeCmdk();
+    a.run();
+  },
+
+  // ── Coda offline: badge in statusbar + popover ────────────────────
+  _queueOps: [],
+
+  async refreshQueueBadge() {
+    const badge = $('sb-queue');
+    if (!badge) return;
+    const primary = this.accounts?.find(a => a.is_primary) || this.accounts?.[0];
+    if (!primary) { badge.classList.add('hidden'); return; }
+    let ops = [];
+    try { ops = await invoke('list_pending_ops', { email: primary.email }); } catch (e) {}
+    this._queueOps = ops;
+    if (!ops.length) {
+      badge.classList.add('hidden');
+      $('queue-pop')?.classList.add('hidden');
+      return;
+    }
+    badge.classList.remove('hidden');
+    badge.classList.toggle('warn', ops.some(o => o.status !== 'pending'));
+    $('sb-queue-text').textContent = ops.length === 1 ? '1 in attesa' : `${ops.length} in attesa`;
+  },
+
+  toggleQueuePopover() {
+    const pop = $('queue-pop');
+    if (!pop) return;
+    if (!pop.classList.contains('hidden')) { pop.classList.add('hidden'); return; }
+    const labels = { create: 'Creazione', update: 'Modifica', delete: 'Eliminazione' };
+    const stat = { pending: 'in attesa', error: 'errore', conflict: 'conflitto' };
+    pop.innerHTML = `
+      <div class="qp-head">Operazioni da sincronizzare</div>
+      ${this._queueOps.map(o => `
+        <div class="qp-row">
+          <span class="qp-type">${labels[o.op_type] || escHtml(o.op_type)}</span>
+          <span class="qp-status ${escHtml(o.status)}">${stat[o.status] || escHtml(o.status)}</span>
+          <span class="qp-time tnum">${fmtDT(o.created_at)}</span>
+        </div>`).join('')}
+      <button class="btn qp-flush" onclick="App.flushQueueNow()">Sincronizza ora</button>`;
+    pop.classList.remove('hidden');
+    const close = (e) => {
+      if (e.target.closest('#queue-pop, #sb-queue')) return;
+      pop.classList.add('hidden');
+      document.removeEventListener('mousedown', close, true);
+    };
+    setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+  },
+
+  async flushQueueNow() {
+    $('queue-pop')?.classList.add('hidden');
+    const primary = this.accounts?.find(a => a.is_primary) || this.accounts?.[0];
+    if (!primary) return;
+    try {
+      await invoke('flush_queue', { email: primary.email });
+      await this.loadInterventions();
+    } catch (e) { toast('Errore: ' + e, 'error'); }
+    this.refreshQueueBadge();
+  },
+
+  // ── Export iCal (.ics) ────────────────────────────────────────────
+  _icsDate(iso) {
+    const d = new Date(iso);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}T${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
+  },
+
+  _icsEsc(s) {
+    return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;')
+      .replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  },
+
+  exportIcs(items, filename = 'interventi.ics') {
+    const arr = (Array.isArray(items) ? items : [items]).filter(i => i.start_dt && i.end_dt);
+    if (!arr.length) { toast('Nessun intervento da esportare', 'warning'); return; }
+    const stamp = this._icsDate(new Date().toISOString());
+    const events = arr.map(it => [
+      'BEGIN:VEVENT',
+      `UID:${this._icsEsc(it.exchange_item_id || `${it.start_dt}-${Math.random().toString(36).slice(2)}`)}@gestoreinterventi`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${this._icsDate(it.start_dt)}`,
+      `DTEND:${this._icsDate(it.end_dt)}`,
+      `SUMMARY:${this._icsEsc(it.subject || [it.ragione_sociale, it.descrizione].filter(Boolean).join(' — '))}`,
+      it.luogo ? `LOCATION:${this._icsEsc(it.luogo)}` : null,
+      `DESCRIPTION:${this._icsEsc(String(it.body_html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())}`,
+      'END:VEVENT',
+    ].filter(Boolean).join('\r\n'));
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'PRODID:-//TSSI//Gestore Interventi//IT', 'CALSCALE:GREGORIAN',
+      ...events, 'END:VCALENDAR'].join('\r\n');
+    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(arr.length === 1 ? 'Intervento esportato in iCal' : `${arr.length} interventi esportati in iCal`, 'success');
+  },
+
+  exportIcsItem(itemJson) {
+    const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
+    const slug = (item.ragione_sociale || 'export').replace(/[^\w-]+/g, '_').slice(0, 30);
+    this.exportIcs(item, `intervento-${slug}.ics`);
+  },
+
+  // ── Anteprima PDF nel modale email ────────────────────────────────
+  _emailPdfUrl: null,
+
+  _revokeEmailPdf() {
+    if (this._emailPdfUrl) { URL.revokeObjectURL(this._emailPdfUrl); this._emailPdfUrl = null; }
+  },
+
+  async emailPreviewPdf() {
+    const item = this._currentEmailItem;
+    const box = $('email-pdf-preview');
+    const btn = $('email-preview-btn');
+    if (!box || !item) return;
+    if (!box.classList.contains('hidden')) {
+      box.classList.add('hidden'); box.innerHTML = '';
+      this._revokeEmailPdf();
+      return;
+    }
+    const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
+    if (btn) btn.disabled = true;
+    try {
+      const b64 = await invoke('export_pdf', {
+        email: primary?.email, itemId: item.exchange_item_id, changeKey: item.change_key,
+      });
+      this._revokeEmailPdf();
+      const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'application/pdf' });
+      this._emailPdfUrl = URL.createObjectURL(blob);
+      box.innerHTML = `<iframe class="email-pdf-frame" src="${this._emailPdfUrl}#toolbar=0&navpanes=0" title="Anteprima PDF"></iframe>`;
+      box.classList.remove('hidden');
+    } catch (e) {
+      toast('Anteprima non disponibile: ' + e, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
   editItem(itemJson) {
     const item = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     this.openNewModal();
@@ -1265,6 +1528,8 @@ const App = {
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     if (!primary) { toast('Nessun account', 'warning'); return; }
     this._syncing = true;
+    // Cache vuota → mostra subito gli skeleton al posto di "Nessun intervento".
+    if (!this.interventions?.length) this.renderList([]);
     const btn = $('sync-btn');
     btn?.classList.add('syncing');
     $('sb-sync-text').textContent = 'Sincronizzazione…';
@@ -1523,7 +1788,12 @@ const App = {
       <div class="fg"><label class="fg-lbl">CC</label><input class="fg-in" id="email-cc" value="${ccVal}"></div>
       <div class="fg"><label class="fg-lbl">Oggetto</label><input class="fg-in" id="email-subject" value="Report intervento — ${item.ragione_sociale || ''}"></div>
       <div class="fg"><label class="fg-lbl">Messaggio</label><textarea class="fg-ta" id="email-body" rows="4">Gentili,\n\nIn allegato il report dell'intervento del ${fmtDT(item.start_dt)}.\n\nCordiali saluti</textarea></div>
-      <div style="font-size:11px;color:var(--text-3)">Il PDF dell'intervento verrà allegato automaticamente.</div>`;
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn" type="button" id="email-preview-btn" onclick="App.emailPreviewPdf()">${GIIcon('file')} Anteprima PDF</button>
+        <span style="font-size:11px;color:var(--text-3)">Il PDF verrà allegato automaticamente.</span>
+      </div>
+      <div id="email-pdf-preview" class="email-pdf-preview hidden"></div>`;
+    this._revokeEmailPdf();
     $('modal-email').classList.remove('hidden', 'closing');
   },
 
@@ -1700,6 +1970,9 @@ const App = {
     $('trasferta-luogo').value = '';
     $('trasferta-durata').value = 30;
     this._updateTrasfertaDurata(30);
+    // Ripristina l'ultima scelta della spunta "Conserva dettaglio breve".
+    const keep = $('trasferta-keep-altro');
+    if (keep) keep.checked = localStorage.getItem('gi_trasferta_keep_altro') === 'true';
     $('modal-trasferta').classList.remove('hidden', 'closing');
     setTimeout(() => $('trasferta-luogo').focus(), 80);
   },
@@ -1747,7 +2020,7 @@ const App = {
       tipo_tariffa: null,
       tipo_fatturazione: null,
       trasferta: null,
-      altro: null,
+      altro: ($('trasferta-keep-altro')?.checked && item.altro) ? item.altro : null,
       body_html: null,
     };
     const btn = $('trasferta-confirm-btn');

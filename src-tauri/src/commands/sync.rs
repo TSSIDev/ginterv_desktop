@@ -99,6 +99,16 @@ pub async fn flush_queue(
         .map_err(|e| e.to_string())
 }
 
+/// Full pending-ops queue for an account (any status) — powers the statusbar badge.
+#[tauri::command]
+pub async fn list_pending_ops(
+    email: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<queue::PendingOp>, String> {
+    let conn = state.db.0.lock().map_err(|e| e.to_string())?;
+    queue::list_all(&conn, &email).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Serialize)]
 pub struct ConflictView {
     pub op_id: i64,

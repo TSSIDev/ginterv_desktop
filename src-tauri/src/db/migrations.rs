@@ -74,5 +74,14 @@ pub fn run(conn: &Connection) -> Result<()> {
         "ALTER TABLE intervention_cache ADD COLUMN pending_op TEXT",
         [],
     ).ok();
+    // get_range filters on (user_email, start_dt); list_pending on (user_email, status)
+    conn.execute_batch(
+        "
+        CREATE INDEX IF NOT EXISTS idx_cache_user_start
+            ON intervention_cache(user_email, start_dt);
+        CREATE INDEX IF NOT EXISTS idx_pending_user_status
+            ON pending_ops(user_email, status);
+        ",
+    )?;
     Ok(())
 }

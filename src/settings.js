@@ -484,15 +484,14 @@ const Settings = {
         <div class="st-setting-row">
           <div>
             <div class="st-setting-label">Tema</div>
-            <div class="st-setting-desc">Usa il tema ${isLight ? 'chiaro' : 'scuro'} per l'interfaccia.</div>
+            <div class="st-setting-desc">Scuro, chiaro, o automatico in base al sistema.</div>
           </div>
-          <button class="st-theme-switch${isLight ? ' light' : ''}" type="button" role="switch"
-            aria-checked="${isLight ? 'true' : 'false'}" aria-label="Tema chiaro"
-            onclick="Settings._toggleTheme()">
-            <span class="st-theme-thumb"></span>
-            <span class="st-theme-option st-theme-dark">☾ Scuro</span>
-            <span class="st-theme-option st-theme-light">☀ Chiaro</span>
-          </button>
+          <div class="st-theme-seg" role="radiogroup" aria-label="Tema">
+            ${[['dark', '☾ Scuro'], ['auto', 'Auto'], ['light', '☀ Chiaro']].map(([v, lbl]) =>
+              `<button type="button" class="st-seg-btn${App.themePref() === v ? ' on' : ''}" role="radio"
+                 aria-checked="${App.themePref() === v}" data-theme="${v}"
+                 onclick="Settings._setTheme('${v}')">${lbl}</button>`).join('')}
+          </div>
         </div>
         <div class="st-setting-row">
           <div>
@@ -532,18 +531,16 @@ const Settings = {
   },
 
   _setTheme(t) {
-    const isLight = t === 'light';
-    document.body.classList.toggle('theme-light', isLight);
     localStorage.setItem('gi-theme', t);
+    App.applyThemePref();
+    const isLight = document.body.classList.contains('theme-light');
     const themeBtn = $('theme-btn');
     if (themeBtn) themeBtn.textContent = isLight ? '☀' : '☾';
-    const sw = document.querySelector('.st-theme-switch');
-    if (sw) {
-      sw.classList.toggle('light', isLight);
-      sw.setAttribute('aria-checked', isLight ? 'true' : 'false');
-    }
-    const desc = document.querySelector('.st-setting-desc');
-    if (desc) desc.textContent = `Usa il tema ${isLight ? 'chiaro' : 'scuro'} per l'interfaccia.`;
+    document.querySelectorAll('.st-theme-seg .st-seg-btn').forEach(b => {
+      const on = b.dataset.theme === t;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
   },
 
   _toggleTransparency() {

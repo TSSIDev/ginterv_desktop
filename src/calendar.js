@@ -1,7 +1,11 @@
 // calendar.js — week / day / month calendar views
 
 const Calendar = (() => {
-  const H_S = 0, H_E = 24, H_PX = 96;
+  const H_S = 0, H_E = 24;
+  // Densità oraria zoomabile (Ctrl+rotella), persistita per sessione futura.
+  const H_PX_MIN = 48, H_PX_MAX = 192;
+  let H_PX = Math.min(H_PX_MAX, Math.max(H_PX_MIN,
+    parseInt(localStorage.getItem('gi-cal-hpx')) || 96));
   const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
   const MONTHS_S = MONTHS.map(m => m.slice(0,3));
@@ -653,6 +657,8 @@ const Calendar = (() => {
           ? `<div class="iv-compact-line"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
           : `<div class="iv-t">${timeStr}</div><div class="iv-c">${iv.client}</div>${iv.altro ? `<div class="iv-tp" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 60 && iv.tipo ? `<div class="iv-tp">${iv.tipo}</div>` : '')}<div class="iv-s">${sig}</div>`;
         blocks += `<div class="iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
+          tabindex="0" role="button" aria-label="${timeStr} · ${iv.client}"
+          onkeydown="Calendar._blockKey(event,${escHtml(JSON.stringify(iv._raw))})"
           onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
           oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
@@ -735,6 +741,8 @@ const Calendar = (() => {
           ? `<div class="iv-compact-line day"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
           : `<div class="div-time">${timeStr}</div><div class="div-client">${iv.client}</div>${iv.altro ? `<div class="div-tipo" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 68 && iv.tipo ? `<div class="div-tipo">${iv.tipo}</div>` : '')}`;
         blocks += `<div class="day-iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
+          tabindex="0" role="button" aria-label="${timeStr} · ${iv.client}"
+          onkeydown="Calendar._blockKey(event,${escHtml(JSON.stringify(iv._raw))})"
           onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
           onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
           oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
@@ -898,6 +906,76 @@ const Calendar = (() => {
       renderMonth();
     }
   }
+
+  // ── Zoom densità oraria (Ctrl+rotella su griglia settimana/giorno) ──
+  document.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    const wrap = e.target.closest?.('#cal-tgrid-wrap, #cal-day-wrap');
+    if (!wrap) return;
+    e.preventDefault();
+    const old = H_PX;
+    H_PX = Math.min(H_PX_MAX, Math.max(H_PX_MIN, H_PX + (e.deltaY < 0 ? 12 : -12)));
+    if (H_PX === old) return;
+    localStorage.setItem('gi-cal-hpx', String(H_PX));
+    _hidePeek();
+    // Zoom ancorato al puntatore: il punto orario sotto il mouse resta fermo.
+    const anchorY = e.clientY - wrap.getBoundingClientRect().top;
+    const st = wrap.scrollTop;
+    _renderAnim = false; renderAll(); _renderAnim = true;
+    wrap.scrollTop = (st + anchorY) * (H_PX / old) - anchorY;
+  }, { passive: false });
+
+  // ── Peek: popover leggero su hover di un blocco (400ms, pointer-events:none) ──
+  let _peekTimer = null, _peekId = null;
+
+  function _hidePeek() {
+    clearTimeout(_peekTimer); _peekTimer = null; _peekId = null;
+    $('cal-peek')?.classList.add('hidden');
+  }
+
+  function _showPeek(block, item) {
+    const el = $('cal-peek');
+    if (!el) return;
+    const pad2 = n => String(n).padStart(2, '0');
+    const t = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    const s = item.start_dt ? new Date(item.start_dt) : null;
+    const e = item.end_dt ? new Date(item.end_dt) : null;
+    const noteText = String(item.body_html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const row = (lbl, val) => val ? `<div class="pk-row"><span class="pk-lbl">${lbl}</span><span class="pk-val">${escHtml(val)}</span></div>` : '';
+    el.innerHTML = `
+      <div class="pk-client">${escHtml(item.ragione_sociale || '—')}</div>
+      ${s && e ? `<div class="pk-time tnum">${t(s)} → ${t(e)}</div>` : ''}
+      ${row('Tipo', item.descrizione)}
+      ${row('Luogo', item.luogo)}
+      ${row('Dettaglio', item.altro)}
+      ${noteText ? `<div class="pk-note">${escHtml(noteText.length > 160 ? noteText.slice(0, 158) + '…' : noteText)}</div>` : ''}`;
+    el.classList.remove('hidden');
+    // Posiziona a destra del blocco; se non c'è spazio, a sinistra.
+    const r = block.getBoundingClientRect();
+    const w = 270, h = el.offsetHeight || 120;
+    let x = r.right + 10;
+    if (x + w > window.innerWidth - 8) x = r.left - w - 10;
+    x = Math.max(8, x);
+    const y = Math.max(8, Math.min(r.top, window.innerHeight - h - 8));
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const block = e.target.closest?.('.iv[data-cal-id], .day-iv[data-cal-id]');
+    if (!block) { _hidePeek(); return; }
+    if (_drag || _move || _resize) return;
+    const id = block.dataset.calId;
+    if (id === _peekId) return;
+    clearTimeout(_peekTimer);
+    _peekTimer = setTimeout(() => {
+      const item = getItems().find(i => calBlockId(i) === id);
+      if (item) { _peekId = id; _showPeek(block, item); }
+    }, 400);
+  });
+  // Il peek non deve sopravvivere a click, drag o scroll.
+  document.addEventListener('mousedown', _hidePeek, true);
+  document.addEventListener('scroll', _hidePeek, true);
 
   return {
     onNavigate() {
@@ -1079,6 +1157,14 @@ const Calendar = (() => {
     _setTech(sigla) {
       techFilter = sigla;
       renderAll();
+    },
+
+    // Keyboard activation of a calendar block (Enter/Space → select + detail).
+    _blockKey(e, raw) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      this._select(raw);
     },
 
     _colDown(e, col, isoDate) {

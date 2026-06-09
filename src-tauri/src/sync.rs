@@ -118,10 +118,13 @@ pub async fn sync_account(
         .collect();
 
     // Get cached items for this user
-    let cached: Vec<CachedItem> = {
-        let conn = state.db.0.lock().unwrap();
-        cache::get_range(&conn, email, &start, &end).unwrap_or_default()
-    };
+    let cached: Vec<CachedItem> = state
+        .db
+        .0
+        .lock()
+        .ok()
+        .map(|conn| cache::get_range(&conn, email, &start, &end).unwrap_or_default())
+        .unwrap_or_default();
     // Map: exchange_item_id → (change_key, nome_tecnico_empty)
     let cached_map: HashMap<String, (String, bool)> = cached
         .iter()
@@ -154,9 +157,12 @@ pub async fn sync_account(
         let to_fetch_ids: std::collections::HashSet<&str> =
             to_fetch.iter().map(|(id, _)| id.as_str()).collect();
         if let Ok(conn) = state.db.0.lock() {
-            for item in remote_items.iter().filter(|i| to_fetch_ids.contains(i.exchange_item_id.as_str())) {
-                let meta = CachedItem::from_item(item, email);
-                cache::upsert_item_metadata(&conn, &meta).ok();
+            if let Ok(tx) = conn.unchecked_transaction() {
+                for item in remote_items.iter().filter(|i| to_fetch_ids.contains(i.exchange_item_id.as_str())) {
+                    let meta = CachedItem::from_item(item, email);
+                    cache::upsert_item_metadata(&tx, &meta).ok();
+                }
+                tx.commit().ok();
             }
         }
     }
@@ -199,13 +205,16 @@ pub async fn sync_account(
     let mut count = 0i64;
     while let Some(res) = joinset.join_next().await {
         if let Ok(items) = res {
-            for item in items {
-                let cached_item = CachedItem::from_item(&item, email);
-                if let Ok(conn) = state.db.0.lock() {
-                    cache::upsert_item(&conn, &cached_item).ok();
+            // One lock + one transaction per batch instead of per item.
+            if let Ok(conn) = state.db.0.lock() {
+                if let Ok(tx) = conn.unchecked_transaction() {
+                    for item in &items {
+                        cache::upsert_item(&tx, &CachedItem::from_item(item, email)).ok();
+                    }
+                    tx.commit().ok();
                 }
-                count += 1;
             }
+            count += items.len() as i64;
         }
         if let Some(batch) = pending.next() {
             spawn_fetch(&mut joinset, batch);
@@ -213,10 +222,17 @@ pub async fn sync_account(
     }
 
     // Remove cached items that no longer exist on Exchange
-    for cached_id in cached_map.keys() {
-        if !remote_map.contains_key(cached_id) {
-            if let Ok(conn) = state.db.0.lock() {
-                cache::delete_item(&conn, email, cached_id).ok();
+    let stale: Vec<&String> = cached_map
+        .keys()
+        .filter(|id| !remote_map.contains_key(*id))
+        .collect();
+    if !stale.is_empty() {
+        if let Ok(conn) = state.db.0.lock() {
+            if let Ok(tx) = conn.unchecked_transaction() {
+                for id in stale {
+                    cache::delete_item(&tx, email, id).ok();
+                }
+                tx.commit().ok();
             }
         }
     }

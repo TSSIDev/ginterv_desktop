@@ -79,6 +79,7 @@ pub fn run() {
             commands::sync::trigger_sync,
             commands::sync::sync_status_cmd,
             commands::sync::flush_queue,
+            commands::sync::list_pending_ops,
             commands::sync::list_conflicts,
             commands::sync::resolve_conflict,
         ])

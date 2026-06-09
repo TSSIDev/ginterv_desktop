@@ -15,7 +15,10 @@ pub fn open() -> Result<Connection> {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(&path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    // synchronous=NORMAL is safe under WAL and avoids an fsync per commit
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+    )?;
     migrations::run(&conn)?;
     Ok(conn)
 }
