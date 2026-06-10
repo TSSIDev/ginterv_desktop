@@ -609,11 +609,86 @@ const Calendar = (() => {
 
   // ── Week view ────────────────────────────────────────────────────────
 
+  // ── Time-grid condiviso (settimana + giorno) ────────────────────────
+  // Le due viste differiscono solo per classi CSS, soglie compact e
+  // presenza di quarti d'ora / indicatore firma: tutto parametrizzato qui.
+  const GRID_CFG = {
+    week: { blockCls: 'iv', compactAt: 46, minH: 20, tipoAt: 60,
+            compactLine: 'iv-compact-line', tCls: 'iv-t', cCls: 'iv-c', tpCls: 'iv-tp',
+            sig: true, quarterLines: true },
+    day:  { blockCls: 'day-iv', compactAt: 52, minH: 24, tipoAt: 68,
+            compactLine: 'iv-compact-line day', tCls: 'div-time', cCls: 'div-client', tpCls: 'div-tipo',
+            sig: false, quarterLines: false },
+  };
+
+  function gutterLblsHtml() {
+    let lbls = '';
+    for (let h = H_S; h < H_E; h++)
+      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${hm(h, 0)}</div>`;
+    return lbls;
+  }
+
+  function hourLinesHtml(cfg) {
+    let lines = '';
+    for (let h = 0; h < H_E - H_S; h++) {
+      lines += `<div class="h-line" style="top:${h * H_PX}px"></div>`;
+      if (cfg.quarterLines) lines += `<div class="q-line" style="top:${h * H_PX + H_PX * .25}px"></div>`;
+      lines += `<div class="hh-line" style="top:${h * H_PX + H_PX * .5}px"></div>`;
+      if (cfg.quarterLines) lines += `<div class="q-line" style="top:${h * H_PX + H_PX * .75}px"></div>`;
+    }
+    return lines;
+  }
+
+  function nowLineHtml(date) {
+    if (!sameD(date, today)) return '';
+    const n = new Date(), h = n.getHours(), m = n.getMinutes();
+    if (h < H_S || h >= H_E) return '';
+    return `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
+  }
+
+  function blockHtml(iv, cfg) {
+    const top = ((iv.sh - H_S) + iv.sm / 60) * H_PX + 2;
+    const ht = Math.max((iv.dur / 60) * H_PX - 4, cfg.minH);
+    const isSel = selectedItem?.exchange_item_id === iv.exchange_item_id;
+    const endMin = iv.sh * 60 + iv.sm + iv.dur;
+    const pct = 100 / iv._numCols;
+    const lPct = iv._col * pct;
+    const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
+    const isCompact = ht < cfg.compactAt;
+    const tipoHtml = iv.altro
+      ? `<div class="${cfg.tpCls}" style="opacity:.85;font-weight:600">${iv.altro}</div>`
+      : (ht > cfg.tipoAt && iv.tipo ? `<div class="${cfg.tpCls}">${iv.tipo}</div>` : '');
+    const innerHtml = isCompact
+      ? `<div class="${cfg.compactLine}"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
+      : `<div class="${cfg.tCls}">${timeStr}</div><div class="${cfg.cCls}">${iv.client}</div>${tipoHtml}${cfg.sig ? `<div class="iv-s">${iv.firmato ? '✓' : '·'}</div>` : ''}`;
+    const raw = escHtml(JSON.stringify(iv._raw));
+    return `<div class="${cfg.blockCls}${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
+      tabindex="0" role="button" aria-label="${timeStr} · ${iv.client}"
+      onkeydown="Calendar._blockKey(event,${raw})"
+      onmousedown="Calendar._moveDown(event,${raw})"
+      onclick="Calendar._select(${raw})"
+      oncontextmenu="App.openContextMenu(event,${raw})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${raw},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${raw},'bottom')"></div>` : ''}</div>`;
+  }
+
+  function dayColHtml(date, colItems, cfg) {
+    const tot = (H_E - H_S) * H_PX;
+    const blocks = layoutItems(colItems).map(iv => blockHtml(iv, cfg)).join('');
+    return `<div class="day-col" data-iso-date="${isoDay(date)}" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')" oncontextmenu="Calendar._ctxSlot(event,this,'${isoDay(date)}')">${hourLinesHtml(cfg)}${blocks}${nowLineHtml(date)}</div>`;
+  }
+
+  function commitTimeGrid(innerId, wrapId, daysHtml) {
+    const inner = $(innerId);
+    const before = snapshotCalBlocks(inner);
+    inner.innerHTML = `<div class="tgrid-lbls">${gutterLblsHtml()}</div><div class="tgrid-days">${daysHtml}</div>`;
+    inner.classList.toggle('cell-anim', _renderAnim);
+    featherCalBlocks(inner, before);
+    const wrap = $(wrapId);
+    if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
+  }
+
   function renderWeek() {
-    const nH = H_E - H_S, tot = nH * H_PX;
     const items = getFilteredItems();
 
-    // Header
     let head = '<div class="wk-gutter"></div>';
     for (let i = 0; i < 7; i++) {
       const d = addD(weekStart, i), isT = sameD(d, today);
@@ -624,70 +699,17 @@ const Calendar = (() => {
     }
     $('cal-wk-head').innerHTML = head;
 
-    // Grid
-    let lbls = '';
-    for (let h = H_S; h < H_E; h++)
-      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${hm(h, 0)}</div>`;
-
     let days = '';
     for (let d = 0; d < 7; d++) {
       const date = addD(weekStart, d);
-      const dayItems = daySegments(date, items);
-
-      let lines = '';
-      for (let h = 0; h < nH; h++) {
-        lines += `<div class="h-line" style="top:${h * H_PX}px"></div>
-        <div class="q-line" style="top:${h * H_PX + H_PX * .25}px"></div>
-        <div class="hh-line" style="top:${h * H_PX + H_PX * .5}px"></div>
-        <div class="q-line" style="top:${h * H_PX + H_PX * .75}px"></div>`;
-      }
-
-      let blocks = '';
-      layoutItems(dayItems).forEach(iv => {
-        const top = ((iv.sh - H_S) + iv.sm / 60) * H_PX + 2;
-        const ht = Math.max((iv.dur / 60) * H_PX - 4, 20);
-        const isSel = selectedItem?.exchange_item_id === iv.exchange_item_id;
-        const endMin = iv.sh * 60 + iv.sm + iv.dur;
-        const sig = iv.firmato ? '✓' : '·';
-        const pct = 100 / iv._numCols;
-        const lPct = iv._col * pct;
-        const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
-        const isCompact = ht < 46;
-        const innerHtml = isCompact
-          ? `<div class="iv-compact-line"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
-          : `<div class="iv-t">${timeStr}</div><div class="iv-c">${iv.client}</div>${iv.altro ? `<div class="iv-tp" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 60 && iv.tipo ? `<div class="iv-tp">${iv.tipo}</div>` : '')}<div class="iv-s">${sig}</div>`;
-        blocks += `<div class="iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
-          tabindex="0" role="button" aria-label="${timeStr} · ${iv.client}"
-          onkeydown="Calendar._blockKey(event,${escHtml(JSON.stringify(iv._raw))})"
-          onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
-          onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
-      });
-
-      let nowLine = '';
-      if (sameD(date, today)) {
-        const n = new Date(), h = n.getHours(), m = n.getMinutes();
-        if (h >= H_S && h < H_E)
-          nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
-      }
-
-      days += `<div class="day-col" data-iso-date="${isoDay(date)}" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(date)}')" oncontextmenu="Calendar._ctxSlot(event,this,'${isoDay(date)}')">${lines}${blocks}${nowLine}</div>`;
+      days += dayColHtml(date, daySegments(date, items), GRID_CFG.week);
     }
-
-    const inner = $('cal-tgrid-inner');
-    const before = snapshotCalBlocks(inner);
-    inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${days}</div>`;
-    inner.classList.toggle('cell-anim', _renderAnim);
-    featherCalBlocks(inner, before);
-
-    const wrap = $('cal-tgrid-wrap');
-    if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
+    commitTimeGrid('cal-tgrid-inner', 'cal-tgrid-wrap', days);
   }
 
   // ── Day view ─────────────────────────────────────────────────────────
 
   function renderDay() {
-    const nH = H_E - H_S, tot = nH * H_PX;
     const items = daySegments(currentDay, getFilteredItems());
 
     const showTechHeader = techFilter !== 'all';
@@ -714,54 +736,12 @@ const Calendar = (() => {
       }
     }
 
-    // Grid
-    let lbls = '';
-    for (let h = H_S; h < H_E; h++)
-      lbls += `<div class="tg-lbl" style="height:${H_PX}px">${hm(h, 0)}</div>`;
-
     let cols = '';
     daySiglas.forEach(s => {
       const colItems = s === 'all' ? items : items.filter(i => i.sigla === s);
-      let lines = '';
-      for (let h = 0; h < nH; h++) {
-        lines += `<div class="h-line" style="top:${h * H_PX}px"></div>
-        <div class="hh-line" style="top:${h * H_PX + H_PX * .5}px"></div>`;
-      }
-      let blocks = '';
-      layoutItems(colItems).forEach(iv => {
-        const top = ((iv.sh - H_S) + iv.sm / 60) * H_PX + 2;
-        const ht = Math.max((iv.dur / 60) * H_PX - 4, 24);
-        const endMin = iv.sh * 60 + iv.sm + iv.dur;
-        const isSel = selectedItem?.exchange_item_id === iv.exchange_item_id;
-        const pct = 100 / iv._numCols;
-        const lPct = iv._col * pct;
-        const timeStr = `${hm(iv.sh, iv.sm)}–${hm(Math.floor(endMin/60), endMin%60)}`;
-        const isCompact = ht < 52;
-        const innerHtml = isCompact
-          ? `<div class="iv-compact-line day"><span class="iv-compact-time">${timeStr}</span><span class="iv-compact-client">${iv.client}</span></div>`
-          : `<div class="div-time">${timeStr}</div><div class="div-client">${iv.client}</div>${iv.altro ? `<div class="div-tipo" style="opacity:.85;font-weight:600">${iv.altro}</div>` : (ht > 68 && iv.tipo ? `<div class="div-tipo">${iv.tipo}</div>` : '')}`;
-        blocks += `<div class="day-iv${isCompact ? ' compact' : ''}${isSel ? ' sel' : ''}${iv._clipStart ? ' clip-start' : ''}${iv._clipEnd ? ' clip-end' : ''}" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color};top:${top}px;height:${ht}px;left:${lPct.toFixed(1)}%;width:calc(${pct.toFixed(1)}% - 3px)"
-          tabindex="0" role="button" aria-label="${timeStr} · ${iv.client}"
-          onkeydown="Calendar._blockKey(event,${escHtml(JSON.stringify(iv._raw))})"
-          onmousedown="Calendar._moveDown(event,${escHtml(JSON.stringify(iv._raw))})"
-          onclick="Calendar._select(${escHtml(JSON.stringify(iv._raw))})"
-          oncontextmenu="App.openContextMenu(event,${escHtml(JSON.stringify(iv._raw))})">${innerHtml}${xdayTag(iv)}${ht >= 44 && !iv._clipStart ? `<div class="iv-resize top" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'top')"></div>` : ''}${!iv._clipEnd ? `<div class="iv-resize" onmousedown="Calendar._resizeDown(event,${escHtml(JSON.stringify(iv._raw))},'bottom')"></div>` : ''}</div>`;
-      });
-      let nowLine = '';
-      const n = new Date(), h = n.getHours(), m = n.getMinutes();
-      if (sameD(currentDay, today) && h >= H_S && h < H_E)
-        nowLine = `<div class="now-line" style="top:${((h - H_S) + m / 60) * H_PX}px"></div>`;
-      cols += `<div class="day-col" data-iso-date="${isoDay(currentDay)}" style="height:${tot}px" onmousedown="Calendar._colDown(event,this,'${isoDay(currentDay)}')" oncontextmenu="Calendar._ctxSlot(event,this,'${isoDay(currentDay)}')">${lines}${blocks}${nowLine}</div>`;
+      cols += dayColHtml(currentDay, colItems, GRID_CFG.day);
     });
-
-    const inner = $('cal-day-inner');
-    const before = snapshotCalBlocks(inner);
-    inner.innerHTML = `<div class="tgrid-lbls">${lbls}</div><div class="tgrid-days">${cols}</div>`;
-    inner.classList.toggle('cell-anim', _renderAnim);
-    featherCalBlocks(inner, before);
-
-    const wrap = $('cal-day-wrap');
-    if (wrap && !wrap.dataset.sc) { wrap.scrollTop = (8 - H_S) * H_PX; wrap.dataset.sc = '1'; }
+    commitTimeGrid('cal-day-inner', 'cal-day-wrap', cols);
   }
 
   // ── Month view ───────────────────────────────────────────────────────
@@ -794,7 +774,7 @@ const Calendar = (() => {
 
       let pills = '';
       dayItems.slice(0, MAX_PILLS).forEach(iv => {
-        pills += `<div class="mth-pill" style="color:${iv.color}"
+        pills += `<div class="mth-pill" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color}"
           onclick="event.stopPropagation();Calendar._select(${escHtml(JSON.stringify(iv._raw))})">
           <div class="mth-pill-txt">${iv.client}</div>
         </div>`;
@@ -962,7 +942,7 @@ const Calendar = (() => {
   }
 
   document.addEventListener('mouseover', (e) => {
-    const block = e.target.closest?.('.iv[data-cal-id], .day-iv[data-cal-id]');
+    const block = e.target.closest?.('.iv[data-cal-id], .day-iv[data-cal-id], .mth-pill[data-cal-id]');
     if (!block) { _hidePeek(); return; }
     if (_drag || _move || _resize) return;
     const id = block.dataset.calId;
@@ -985,13 +965,12 @@ const Calendar = (() => {
       document.querySelectorAll('#view-calendar .vsbtn').forEach(b => {
         if (b.textContent.trim() === vMap[currentView]) b.classList.add('on');
       });
-      // Load interventions if needed then render
+      // Render subito dalla cache in memoria (silenzioso: niente replay anim),
+      // poi refresh asincrono — loadInterventions chiama già Calendar.refresh()
+      // se i dati sono cambiati, quindi nessun secondo render qui.
+      _renderAnim = false; renderAll(); _renderAnim = true;
       const primary = App.accounts && (App.accounts.find(a => a.is_primary) || App.accounts[0]);
-      if (primary) {
-        App.loadInterventions().then(() => renderAll());
-      } else {
-        renderAll();
-      }
+      if (primary) App.loadInterventions();
     },
 
     nav(delta) {

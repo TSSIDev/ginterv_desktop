@@ -696,6 +696,10 @@ const App = {
         e.preventDefault();
         this.openCmdk();
       }
+      if (e.key === 'F1') {
+        e.preventDefault();
+        this.openGuideModal();
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && newModalOpen) {
         e.preventDefault();
         this.submitForm();
@@ -768,7 +772,7 @@ const App = {
     this.loadDropdowns().then(() => this.initForm());
     this.navigate('calendar');
     this.clearDetail();
-    this.loadInterventions();
+    // loadInterventions già innescato da navigate('calendar') → Calendar.onNavigate
     this.checkConflicts();
     // Cold-boot sync: the backend loop sleeps a full interval before its first
     // pass, and the window may already be focused when the focus listener
@@ -817,6 +821,13 @@ const App = {
   openSettingsModal() {
     $('modal-settings')?.classList.remove('hidden', 'closing');
     Settings.onNavigate();
+  },
+
+  openGuideModal() {
+    const m = $('modal-guide');
+    if (!m) return;
+    m.classList.remove('hidden', 'closing');
+    m.querySelector('.guide-body').scrollTop = 0;
   },
 
   openNewModal(prefill) {
@@ -1269,6 +1280,7 @@ const App = {
       { lbl: 'Sincronizza ora', run: () => this.triggerSync() },
       { lbl: 'Cambia tema', run: () => this.toggleTheme() },
       { lbl: 'Impostazioni', run: () => this.openSettingsModal() },
+      { lbl: 'Guida rapida', kbd: 'F1', run: () => this.openGuideModal() },
     ];
   },
 

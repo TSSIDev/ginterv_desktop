@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css?v=66">
+<link rel="stylesheet" href="style.css?v=68">
 </head>
 <body>
 
@@ -72,6 +72,9 @@
       </button>
       <span class="sync-feedback" id="sync-feedback" aria-live="polite"></span>
     </div>
+    <button class="tbtn icon-only" onclick="App.openGuideModal()" id="guide-btn" title="Guida rapida (F1)" aria-label="Guida rapida">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </button>
     <button class="tbtn icon-only" onclick="App.navigate('settings')" id="settings-btn" title="Impostazioni" aria-label="Impostazioni">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -325,6 +328,145 @@
   </div>
 </div>
 
+<!-- Guida rapida -->
+<div class="modal-overlay hidden" id="modal-guide">
+  <div class="modal guide-modal">
+    <div class="modal-head">
+      <span class="modal-title">Guida rapida</span>
+      <button class="modal-close" onclick="App.closeModal('guide')" aria-label="Chiudi guida">×</button>
+    </div>
+    <div class="modal-body guide-body">
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">1</span><h3 class="gd-title">La finestra in breve</h3></div>
+        <p class="gd-text">In alto trovi il pulsante <b>Nuovo intervento</b>, la <b>ricerca</b> e il pulsante <b>Sync</b>.
+        A sinistra il tuo account e il selettore <b>Calendario / Interventi</b>. Al centro la vista attiva;
+        cliccando un intervento i dettagli compaiono nel pannello laterale.</p>
+        <div class="gd-fig">
+          <div class="gdm-app">
+            <div class="gdm-bar">
+              <span class="gdm-pill accent">＋ Nuovo intervento</span>
+              <span class="gdm-pill grow">⌕ Cerca…<span class="gdm-key">⌃K</span></span>
+              <span class="gdm-pill">⟳ Sync</span>
+              <span class="gdm-pill sq">⚙</span>
+            </div>
+            <div class="gdm-cols">
+              <div class="gdm-side">
+                <span class="gdm-line w70"></span>
+                <span class="gdm-line w50"></span>
+                <div class="gdm-seg"><span class="on">Calendario</span><span>Interventi</span></div>
+              </div>
+              <div class="gdm-main">
+                <div class="gdm-grid">
+                  <div class="gdm-block" style="left:8%;top:14%;height:34%"></div>
+                  <div class="gdm-block alt" style="left:42%;top:40%;height:30%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">2</span><h3 class="gd-title">Creare un intervento</h3></div>
+        <p class="gd-text">Tre modi: il pulsante <b>Nuovo intervento</b>, il tasto <span class="key">N</span>,
+        oppure <b>trascina direttamente sulla griglia</b> del calendario — scegli orario e durata in un gesto solo.
+        Nel modulo bastano data e cliente; <span class="key">Ctrl</span>+<span class="key">Invio</span> salva al volo.</p>
+        <div class="gd-fig">
+          <div class="gdm-grid tall">
+            <div class="gdm-drag" style="left:30%;top:22%;height:46%">
+              <span class="gdm-drag-lbl">9:00 → 11:00</span>
+            </div>
+            <span class="gdm-cursor" style="left:56%;top:64%">↖</span>
+          </div>
+          <div class="gd-cap">Trascina in verticale su un giorno: il riquadro segue il mouse.</div>
+        </div>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">3</span><h3 class="gd-title">Muoversi nel calendario</h3></div>
+        <p class="gd-text">Cambia vista con <b>Sett. / Giorno / Mese</b> (o i tasti <span class="key">2</span>
+        <span class="key">3</span> <span class="key">1</span>), scorri i periodi con le frecce
+        <span class="key">←</span> <span class="key">→</span> e torna a oggi con <span class="key">T</span>.
+        Fermati col mouse su un appuntamento — in qualsiasi vista — e compare un'<b>anteprima</b> con orario,
+        tipo, luogo e note, senza aprire nulla. Con <span class="key">Ctrl</span>+<b>rotella</b> regoli lo zoom della griglia oraria.</p>
+        <div class="gd-fig">
+          <div class="gdm-monthwrap">
+            <div class="gdm-month">
+              <div class="gdm-mcell"><i>1</i></div>
+              <div class="gdm-mcell"><i>2</i><span class="gdm-mpill"></span></div>
+              <div class="gdm-mcell hover"><i>3</i><span class="gdm-mpill hot">Rossi SRL</span></div>
+              <div class="gdm-mcell"><i>4</i></div>
+              <div class="gdm-mcell"><i>5</i><span class="gdm-mpill"></span><span class="gdm-mpill"></span></div>
+            </div>
+            <div class="gdm-peek">
+              <div class="gdm-pk-t">Rossi SRL</div>
+              <div class="gdm-pk-h">09:00 → 11:00</div>
+              <div class="gdm-pk-r"><em>Tipo</em>Assistenza</div>
+              <div class="gdm-pk-r"><em>Luogo</em>Milano</div>
+            </div>
+          </div>
+          <div class="gd-cap">Passa il mouse su un appuntamento: l'anteprima appare dopo un istante.</div>
+        </div>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">4</span><h3 class="gd-title">Spostare e modificare</h3></div>
+        <p class="gd-text">Nelle viste settimana e giorno <b>trascina un blocco</b> per spostarlo,
+        oppure trascina il suo <b>bordo inferiore</b> per cambiarne la durata. Un click apre i dettagli
+        nel pannello laterale: da lì puoi modificare, firmare, esportare il PDF o inviarlo via email.</p>
+        <div class="gd-fig">
+          <div class="gdm-grid tall">
+            <div class="gdm-block lbl" style="left:12%;top:18%;height:40%"><span>Rossi SRL</span>
+              <span class="gdm-arrow move">⇕</span>
+              <span class="gdm-resize"></span>
+            </div>
+            <div class="gdm-block alt lbl" style="left:55%;top:30%;height:34%"><span>Bianchi SpA</span></div>
+          </div>
+          <div class="gd-cap">⇕ sposta l'intervento · il bordo in basso ne allunga o accorcia la durata.</div>
+        </div>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">5</span><h3 class="gd-title">Trovare un intervento</h3></div>
+        <p class="gd-text">Premi <span class="key">Ctrl</span>+<span class="key">K</span> o usa la barra in alto.
+        Scrivi liberamente (cliente, tipo, note) e affina con i <b>filtri</b>: cliente, tecnico, periodo, luogo.
+        I filtri attivi restano visibili come etichette e si tolgono con un click.</p>
+        <div class="gd-fig">
+          <div class="gdm-omni">
+            <span class="gdm-omni-ico">⌕</span>
+            <span class="gdm-token">Cliente: Rossi SRL ×</span>
+            <span class="gdm-token">Giugno ×</span>
+            <span class="gdm-omni-txt">sostituzione ups…</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">6</span><h3 class="gd-title">Sincronizzazione con Outlook</h3></div>
+        <p class="gd-text">Gli interventi vivono sul calendario Exchange/Outlook: tutto ciò che crei o modifichi
+        qui appare anche lì, e viceversa. La sincronizzazione è <b>automatica</b> (a intervalli regolari e quando
+        torni sull'app); il pulsante <b>Sync</b> la forza subito. Il pallino verde accanto all'account indica che è tutto aggiornato.</p>
+      </section>
+
+      <section class="gd-sec">
+        <div class="gd-head"><span class="gd-num">7</span><h3 class="gd-title">Scorciatoie da tastiera</h3></div>
+        <div class="gd-keys">
+          <div><span class="key">N</span><em>Nuovo intervento</em></div>
+          <div><span class="key">T</span><em>Vai a oggi</em></div>
+          <div><span class="key">Ctrl</span>+<span class="key">K</span><em>Ricerca</em></div>
+          <div><span class="key">1</span> <span class="key">2</span> <span class="key">3</span><em>Vista mese / settimana / giorno</em></div>
+          <div><span class="key">←</span> <span class="key">→</span><em>Periodo precedente / successivo</em></div>
+          <div><span class="key">Ctrl</span>+<span class="key">Invio</span><em>Salva il modulo aperto</em></div>
+          <div><span class="key">Esc</span><em>Chiudi finestre e menu</em></div>
+          <div><span class="key">F1</span><em>Questa guida</em></div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
 <!-- New intervention modal -->
 <div class="modal-overlay hidden" id="modal-new">
   <div class="modal new-modal">
@@ -565,7 +707,7 @@
 <script src="vendor/purify.min.js?v=1"></script>
 <script src="search.js?v=12"></script>
 <script src="settings.js?v=15"></script>
-<script src="calendar.js?v=34"></script>
-<script src="app.js?v=47"></script>
+<script src="calendar.js?v=36"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>
