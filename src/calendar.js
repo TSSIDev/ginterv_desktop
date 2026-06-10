@@ -940,7 +940,7 @@ const Calendar = (() => {
     const t = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     const s = item.start_dt ? new Date(item.start_dt) : null;
     const e = item.end_dt ? new Date(item.end_dt) : null;
-    const noteText = String(item.body_html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const noteText = htmlToText(item.body_html);
     const row = (lbl, val) => val ? `<div class="pk-row"><span class="pk-lbl">${lbl}</span><span class="pk-val">${escHtml(val)}</span></div>` : '';
     el.innerHTML = `
       <div class="pk-client">${escHtml(item.ragione_sociale || '—')}</div>

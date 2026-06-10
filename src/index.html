@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestore Interventi</title>
-<link rel="stylesheet" href="style.css?v=62">
+<link rel="stylesheet" href="style.css?v=66">
 </head>
 <body>
 
@@ -165,61 +165,27 @@
         <div id="list-container" style="overflow-y:auto;flex:1;padding-top:6px"></div>
       </div>
 
-<div class="view" id="view-search" style="flex-direction:row">
+<div class="view" id="view-search">
 
-        <!-- Filter sidebar -->
-        <div id="srch-sidebar">
-
-          <div class="srch-section">
-            <div class="srch-sec-lbl">Cerca cliente</div>
-            <input class="fg-in" id="srch-client-input" placeholder="Nome cliente…"
-              oninput="Search.setClientQ(this.value)" style="margin-top:4px;font-size:12px">
+        <!-- Omnibar: testo + token filtri attivi; chip "+" aprono il popover -->
+        <div class="srch-head" id="srch-head">
+          <div class="srch-omni" onclick="document.getElementById('srch-input').focus()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <div class="srch-tokens" id="srch-tokens"></div>
+            <input id="srch-input" placeholder="Cerca cliente, tipo, note…" autocomplete="off"
+              oninput="Search.setQ(this.value)" onkeydown="Search.onKeydown(event)">
           </div>
-
-          <div class="srch-section">
-            <div class="srch-sec-lbl">Periodo</div>
-            <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">
-              <button class="srch-pill srch-date-pill" data-preset="oggi"      onclick="Search.setDatePreset('oggi')">Oggi</button>
-              <button class="srch-pill srch-date-pill" data-preset="settimana" onclick="Search.setDatePreset('settimana')">Questa settimana</button>
-              <button class="srch-pill srch-date-pill" data-preset="mese"      onclick="Search.setDatePreset('mese')">Questo mese</button>
-              <button class="srch-pill srch-date-pill" data-preset="3mesi"     onclick="Search.setDatePreset('3mesi')">Ultimi 3 mesi</button>
-              <button class="srch-pill srch-date-pill" data-preset="custom"    onclick="Search.setDatePreset('custom')">Personalizzato…</button>
-            </div>
-            <div id="srch-date-custom" style="display:none;margin-top:8px;flex-direction:column;gap:6px">
-              <div>
-                <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Dal</div>
-                <input class="fg-in" type="date" id="srch-date-from" style="font-size:11px"
-                  oninput="Search.setCustomRange(this.value, document.getElementById('srch-date-to').value)">
-              </div>
-              <div>
-                <div style="font-size:10px;color:var(--text-3);margin-bottom:2px">Al</div>
-                <input class="fg-in" type="date" id="srch-date-to" style="font-size:11px"
-                  oninput="Search.setCustomRange(document.getElementById('srch-date-from').value, this.value)">
-              </div>
-            </div>
-          </div>
-
-          <div class="srch-section">
-            <div class="srch-sec-lbl">Tecnico</div>
-            <div id="srch-tech-pills" style="display:flex;flex-direction:column;gap:3px;margin-top:4px"></div>
-          </div>
-
-          <div class="srch-section">
-            <div class="srch-sec-lbl">Tipo intervento</div>
-            <div id="srch-tipo-pills" style="display:flex;flex-direction:column;gap:3px;margin-top:4px"></div>
-          </div>
-
-          <button class="btn sm" onclick="Search.reset()" style="font-size:11px;width:100%;justify-content:center">Azzera filtri</button>
+          <div class="srch-chiprow" id="srch-chiprow"></div>
+          <div class="srch-pop hidden" id="srch-pop"></div>
         </div>
 
-        <!-- Results -->
-        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px 6px">
-            <div style="font-size:11px;color:var(--text-3);flex:1" id="srch-count"></div>
-            <button class="btn" style="height:24px;font-size:11px;padding:0 10px" onclick="Search.exportIcs()" title="Esporta i risultati filtrati in formato iCalendar">Esporta .ics</button>
-          </div>
-          <div id="srch-list" style="flex:1;overflow-y:auto;padding-top:6px"></div>
+        <div class="srch-meta-row">
+          <div id="srch-count"></div>
+          <button class="srch-clear hidden" id="srch-clear" onclick="Search.reset()">Azzera tutto</button>
+          <button class="btn sm srch-export" onclick="Search.exportIcs()" title="Esporta i risultati filtrati in formato iCalendar">Esporta .ics</button>
         </div>
+
+        <div id="srch-list" style="flex:1;overflow-y:auto"></div>
 
       </div>
 
@@ -597,9 +563,9 @@
 
 <div id="toast-container"></div>
 <script src="vendor/purify.min.js?v=1"></script>
-<script src="search.js?v=9"></script>
+<script src="search.js?v=12"></script>
 <script src="settings.js?v=15"></script>
-<script src="calendar.js?v=33"></script>
-<script src="app.js?v=44"></script>
+<script src="calendar.js?v=34"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

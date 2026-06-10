@@ -94,6 +94,7 @@ function GIIcon(name, size = 12) {
     calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
   };
   return `<svg ${attrs}>${paths[name] || ''}</svg>`;
 }
@@ -514,6 +515,18 @@ function sanitizeNote(html) {
   });
 }
 
+// Plain-text extraction from body HTML for previews/exports. A naive regex tag
+// strip leaks the text inside <style>/<xml> blocks that Outlook/Word embed in
+// note bodies ("Style Definitions table.MsoNormalTable…"); parsing with
+// DOMParser drops comments (incl. <!--[if mso]> blocks) and lets us remove
+// style/script nodes before reading textContent.
+function htmlToText(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(String(html), 'text/html');
+  doc.querySelectorAll('style, script, xml, head, title').forEach(n => n.remove());
+  return (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
 // Shared intervention-detail markup. Used by App.showDetail (list/search) and
 // Calendar.renderDetail (calendar) so the panel stays identical from every entry point.
 // opts.trasferta → add "Trasferta" action; opts.close → add "Chiudi" action.
@@ -539,44 +552,67 @@ function renderInterventionDetail(item, opts = {}) {
   ].filter(Boolean).join('');
   const noteHtml = sanitizeNote(item.body_html);
 
+  const menuItems = [
+    `<button class="dmenu-it" onclick="App.openPdfModal(${iS})">${GIIcon('file')}Scarica PDF</button>`,
+    `<button class="dmenu-it" onclick="App.exportIcsItem(${iS})">${GIIcon('cal')}Esporta iCal</button>`,
+    opts.trasferta ? `<button class="dmenu-it" onclick="App.openTrasfertaForDetail(${iS})">${GIIcon('route')}Trasferta</button>` : '',
+    `<div class="dmenu-sep"></div>`,
+    `<button class="dmenu-it danger" onclick="App.confirmDelete(${iS})">${GIIcon('trash')}Elimina</button>`,
+  ].filter(Boolean).join('');
+
   return `
-    <div class="detail-head">
-      <div class="dh-eye">Intervento · ${dateStr}${pendingBadge(item)}</div>
-      <div class="dh-client">${escHtml(item.ragione_sociale || '—')}</div>
-      ${item.descrizione ? `<div class="dh-type">${escHtml(item.descrizione)}</div>` : ''}
-      ${item.altro ? `<div class="dh-altro">${escHtml(item.altro)}</div>` : ''}
+    <div class="detail-hero" style="--hero:${color}">
+      ${opts.close ? `<button class="dhx-close" onclick="Calendar._deselect()" title="Chiudi" aria-label="Chiudi dettaglio">${GIIcon('close', 12)}</button>` : ''}
+      <div class="dhx-eye">${dateStr}${pendingBadge(item)}</div>
+      <div class="dhx-client">${escHtml(item.ragione_sociale || '—')}</div>
+      ${item.descrizione ? `<div class="dhx-type">${escHtml(item.descrizione)}</div>` : ''}
+      ${item.altro ? `<div class="dhx-altro">${escHtml(item.altro)}</div>` : ''}
+      <div class="dhx-actions">
+        <button class="dhx-btn" onclick="App.editItem(${iS})" title="Modifica">${GIIcon('edit', 13)}<span>Modifica</span></button>
+        <button class="dhx-btn" onclick="App.duplicateItem(${iS})" title="Duplica" aria-label="Duplica intervento">${GIIcon('copy', 13)}</button>
+        <button class="dhx-btn" onclick="App.openEmailModal(${iS})" title="Invia email" aria-label="Invia email">${GIIcon('mail', 13)}</button>
+        <button class="dhx-btn dhx-more" onclick="toggleDetailMenu(this)" title="Altre azioni" aria-label="Altre azioni" aria-haspopup="menu" aria-expanded="false">${GIIcon('more', 13)}</button>
+        <div class="dmenu" role="menu">${menuItems}</div>
+      </div>
     </div>
     <div class="detail-body fade-up">
-      <div class="detail-facts">
-        ${dur ? `<div class="fact"><span class="fact-lbl">Orario</span><span class="fact-val tnum">${hm(start)} → ${hm(end)} · ${minHM(dur)}</span></div>` : ''}
-        ${item.luogo ? `<div class="fact"><span class="fact-lbl">Luogo</span><span class="fact-val">${escHtml(item.luogo)}</span></div>` : ''}
-        ${item.nome_tecnico ? `<div class="fact"><span class="fact-lbl">Tecnico</span><span class="fact-val"><span class="tech-pill"><span class="pill-av" style="background:color-mix(in oklch, ${color} 20%, transparent);color:${color}">${escHtml(item.nome_tecnico)}</span>${escHtml(item.nome_tecnico)}</span></span></div>` : ''}
+      <div class="dtl">
+        <div class="dtl-rail" style="background:color-mix(in oklch, ${color} 65%, transparent)"></div>
+        <div class="dtl-rows">
+          ${dur ? `<div class="dtl-time tnum">${hm(start)} → ${hm(end)} · ${minHM(dur)}</div>` : ''}
+          ${item.luogo ? `<div class="dtl-row"><span class="dtl-lbl">Luogo</span><span class="dtl-val">${escHtml(item.luogo)}</span></div>` : ''}
+          ${item.nome_tecnico ? `<div class="dtl-row"><span class="dtl-lbl">Tecnico</span><span class="dtl-val"><span class="tech-pill"><span class="pill-av" style="background:color-mix(in oklch, ${color} 20%, transparent);color:${color}">${escHtml(item.nome_tecnico)}</span>${escHtml(item.nome_tecnico)}</span></span></div>` : ''}
+        </div>
       </div>
       ${metaHtml ? `<div class="detail-meta">${metaHtml}</div>` : ''}
       <div class="detail-note">
         <div class="df-lbl">Note</div>
         ${noteHtml ? `<div class="note-box">${noteHtml}</div>` : `<div class="detail-note-empty">Nessuna nota</div>`}
       </div>
-    </div>
-    <div class="detail-ftr">
-      <div class="detail-actions">
-        <div class="act-row">
-          <button class="abtn prime" onclick="App.editItem(${iS})">${GIIcon('edit')}Modifica</button>
-          <button class="abtn" onclick="App.duplicateItem(${iS})">${GIIcon('copy')}Duplica</button>
-        </div>
-        <div class="act-row secondary">
-          ${opts.trasferta ? `<button class="abtn" onclick="App.openTrasfertaForDetail(${iS})">${GIIcon('route')}Trasferta</button>` : ''}
-          <button class="abtn" onclick="App.openPdfModal(${iS})">${GIIcon('file')}PDF</button>
-          <button class="abtn" onclick="App.openEmailModal(${iS})">${GIIcon('mail')}Email</button>
-          <button class="abtn" onclick="App.exportIcsItem(${iS})">${GIIcon('cal')}iCal</button>
-        </div>
-        <div class="act-row danger-row">
-          <button class="abtn danger" onclick="App.confirmDelete(${iS})">${GIIcon('trash')}Elimina</button>
-          ${opts.close ? `<button class="abtn" onclick="Calendar._deselect()">${GIIcon('close')}Chiudi</button>` : ''}
-        </div>
-      </div>
     </div>`;
 }
+
+// Kebab menu del dettaglio: uno per pannello, chiuso da click esterni, Escape o su una voce.
+function closeDetailMenus() {
+  document.querySelectorAll('.dmenu.open').forEach(m => {
+    m.classList.remove('open');
+    m.parentElement?.querySelector('.dhx-more')?.setAttribute('aria-expanded', 'false');
+  });
+}
+function toggleDetailMenu(btn) {
+  const menu = btn.parentElement.querySelector('.dmenu');
+  if (!menu) return;
+  const willOpen = !menu.classList.contains('open');
+  closeDetailMenus();
+  if (willOpen) { menu.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+}
+document.addEventListener('mousedown', (e) => {
+  if (e.target.closest?.('.dhx-more') || e.target.closest?.('.dmenu')) return;
+  closeDetailMenus();
+});
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('.dmenu-it')) closeDetailMenus();
+});
 
 // ═══════════════════════════════════════════════════════════ MAIN APP
 const App = {
@@ -669,6 +705,8 @@ const App = {
         else document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => closeOverlay(m));
         this.dismissCalendarCreate();
         closeOverlay('ctx-menu');
+        closeDetailMenus();
+        if (typeof Search !== 'undefined') Search._closePop();
       }
       const cmdkOpen = !$('cmdk')?.classList.contains('hidden');
       if (!isEditable && !newModalOpen && !cmdkOpen && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1137,7 +1175,7 @@ const App = {
       let h = 0; for (const c of (sigla||'')) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
       return colors[h % colors.length];
     };
-    const cleanText = (value) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleanText = (value) => htmlToText(value);
     const chip = (label, tone = '') => label ? `<span class="iv-chip ${tone}">${escHtml(label)}</span>` : '';
     const dateBits = (value) => {
       const d = value ? new Date(value) : null;
@@ -1393,7 +1431,7 @@ const App = {
       `DTEND:${this._icsDate(it.end_dt)}`,
       `SUMMARY:${this._icsEsc(it.subject || [it.ragione_sociale, it.descrizione].filter(Boolean).join(' — '))}`,
       it.luogo ? `LOCATION:${this._icsEsc(it.luogo)}` : null,
-      `DESCRIPTION:${this._icsEsc(String(it.body_html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())}`,
+      `DESCRIPTION:${this._icsEsc(htmlToText(it.body_html))}`,
       'END:VEVENT',
     ].filter(Boolean).join('\r\n'));
     const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0',
