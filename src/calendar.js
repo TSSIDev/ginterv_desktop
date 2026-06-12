@@ -122,10 +122,12 @@ const Calendar = (() => {
     _ghostSync(ghost, sh, sm, eh, em);
     ghost.style.visibility = '';
     ghost.classList.add('pending');
-    _pendingGhost = ghost;
     // Popup ancorato al bordo del ghost, non al punto di rilascio del mouse.
     const gr = ghost.getBoundingClientRect();
     _showCreateModal(isoDate, sh, sm, eh, em, gr.right + 2, Math.max(gr.top + 24, Math.min(e.clientY, gr.bottom)));
+    // DOPO _showCreateModal: la sua pulizia iniziale (_dismissCreateModal)
+    // congederebbe il ghost appena assegnato.
+    _pendingGhost = ghost;
   }
 
   function _showCreateModal(isoDate, sh, sm, eh, em, cx, cy) {
