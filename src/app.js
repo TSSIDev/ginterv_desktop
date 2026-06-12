@@ -828,6 +828,9 @@ const App = {
   closeNewModal() {
     closeOverlay('modal-new');
     this.editingItem = null;
+    // Il ghost del drag-create resta visibile sotto il modale: congedalo qui,
+    // a salvataggio o annullamento avvenuto.
+    window.Calendar?.clearCreateGhost?.();
   },
 
   toggleTheme() {

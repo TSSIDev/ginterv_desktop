@@ -1252,15 +1252,14 @@ body.cal-moving .day-iv:not(.is-moving) { transition: none; }
   position: absolute; left: 2px; right: 2px; border-radius: 4px;
   background: var(--accent-dim); border: 1.5px dashed var(--accent);
   pointer-events: none; z-index: 10; opacity: .8;
-  display: flex; align-items: flex-start; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   overflow: hidden;
   /* Glide magnetico tra gli snap da 15 min: senza, il ghost salta a scatti. */
   transition: top .09s var(--ease-fast), height .09s var(--ease-fast), opacity .14s var(--ease);
 }
 .cal-ghost-lbl {
-  margin-top: 3px; padding: 1px 7px; border-radius: 999px;
-  font-size: var(--fs-xs); font-weight: 700; color: var(--accent);
-  background: var(--bg-surface); box-shadow: var(--sh-1);
+  font-size: var(--fs-sm); font-weight: 650; letter-spacing: -0.01em;
+  color: var(--accent);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 /* Dopo il rilascio il ghost resta come riferimento finché il popup di

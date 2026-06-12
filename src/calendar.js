@@ -153,20 +153,25 @@ const Calendar = (() => {
     _dismissCreateModal();
   }
 
-  function _dismissCreateModal() {
+  // Congeda il ghost rimasto a indicare il range (guardia isConnected:
+  // un re-render del calendario può averlo già rimosso dal DOM).
+  function _clearPendingGhost() {
+    if (!_pendingGhost) return;
+    const g = _pendingGhost;
+    _pendingGhost = null;
+    if (g.isConnected) {
+      g.classList.add('out');
+      setTimeout(() => g.remove(), 160);
+    }
+  }
+
+  // keepGhost: alla conferma il ghost sopravvive al popup e resta visibile
+  // sotto il modale "Nuovo intervento"; lo congeda App.closeNewModal.
+  function _dismissCreateModal(keepGhost = false) {
     document.removeEventListener('mousedown', _onCreateOutsideDown, true);
     closeOverlay('cal-create-modal');
     _pendingCreate = null;
-    // Congeda il ghost rimasto a indicare il range (guardia isConnected:
-    // un re-render del calendario può averlo già rimosso dal DOM).
-    if (_pendingGhost) {
-      const g = _pendingGhost;
-      _pendingGhost = null;
-      if (g.isConnected) {
-        g.classList.add('out');
-        setTimeout(() => g.remove(), 160);
-      }
-    }
+    if (!keepGhost) _clearPendingGhost();
   }
 
   // ── Drag-to-expand (resize bottom edge → change duration) ─────────────
@@ -1219,13 +1224,15 @@ const Calendar = (() => {
     _confirmCreate() {
       if (!_pendingCreate) return;
       const { isoDate, sh, sm, eh, em } = _pendingCreate;
-      _dismissCreateModal();
+      _dismissCreateModal(true);
       App.openNewModal({ date: isoDate, startH: sh, startM: sm, endH: eh, endM: em });
     },
 
     _dismissCreate() {
       _dismissCreateModal();
     },
+
+    clearCreateGhost() { _clearPendingGhost(); },
 
     refresh() { _renderAnim = false; renderAll(); _renderAnim = true; },
 
