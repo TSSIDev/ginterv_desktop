@@ -18,14 +18,14 @@
 
   --accent-hue:    285;
   --accent:        oklch(72% 0.150 var(--accent-hue));
-  --accent-solid:  oklch(60% 0.170 var(--accent-hue));
+  --accent-solid:  oklch(57% 0.170 var(--accent-hue)); /* 57%: AA 4.5 con accent-text */
   --accent-text:   oklch(99% 0.010 var(--accent-hue));
   --accent-dim:    color-mix(in oklch, var(--accent) 15%, transparent);
 
   --green:  oklch(76% 0.150 155);  --amber:  oklch(82% 0.130 80);  --red: oklch(70% 0.170 28);
   --purple: oklch(74% 0.130 300);  --pink:   oklch(74% 0.120 20);  --cyan: oklch(78% 0.110 200);
 
-  --text-1: oklch(95% 0.010 270);  --text-2: oklch(72% 0.020 270);  --text-3: oklch(56% 0.022 270);
+  --text-1: oklch(95% 0.010 270);  --text-2: oklch(72% 0.020 270);  --text-3: oklch(60% 0.022 270); /* 60%: AA 4.5 su bg-base */
   --border: oklch(30% 0.015 270);  --border-2: oklch(40% 0.020 270);  --scroll: oklch(44% 0.025 270);
 
   --sh-1: 0 1px 2px oklch(0% 0 0 / .35);
@@ -59,10 +59,10 @@ body.theme-light {
   --accent-text:   oklch(99% 0.010 var(--accent-hue));
   --accent-dim:    color-mix(in oklch, var(--accent) 12%, transparent);
 
-  --green:  oklch(52% 0.150 155);  --amber:  oklch(58% 0.140 70);  --red: oklch(54% 0.190 28);
+  --green:  oklch(52% 0.150 155);  --amber:  oklch(55% 0.140 70);  --red: oklch(54% 0.190 28); /* amber 55%: AA 4.5 */
   --purple: oklch(50% 0.170 300);  --pink:   oklch(54% 0.150 20);  --cyan: oklch(52% 0.110 200);
 
-  --text-1: oklch(28% 0.020 270);  --text-2: oklch(46% 0.025 270);  --text-3: oklch(58% 0.025 270);
+  --text-1: oklch(28% 0.020 270);  --text-2: oklch(46% 0.025 270);  --text-3: oklch(54% 0.025 270); /* 54%: AA 4.5 su bg-base */
   --border: oklch(90.5% 0.008 270);  --border-2: oklch(84% 0.013 270);  --scroll: oklch(82% 0.018 270);
 
   --sh-1: 0 1px 2px oklch(50% 0.03 270 / .10);
@@ -1553,8 +1553,10 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
 .st-acc-email { font-size: 12px; font-weight: 600; color: var(--text-1); }
 .st-acc-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 .st-kv { display: flex; flex-direction: column; gap: 0; background: var(--bg-elev); border-radius: var(--r-md); overflow: hidden; }
-.st-kv-row { display: flex; align-items: center; gap: 16px; padding: 10px 14px; font-size: 12px; border-bottom: 1px solid var(--border); }
-.st-kv-row:last-child { border-bottom: none; }
+/* niente hairline tra le righe: separa il padding (regola no-separatori-1px) */
+.st-kv-row { display: flex; align-items: center; gap: 16px; padding: 8px 14px; font-size: 12px; }
+.st-kv-row:first-child { padding-top: 11px; }
+.st-kv-row:last-child { padding-bottom: 11px; }
 .st-kv-lbl { width: 160px; flex-shrink: 0; color: var(--text-3); }
 .st-setting-list {
   display: flex;
@@ -1682,8 +1684,9 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
   font-size: 10px; font-weight: 600; color: var(--text-3);
   background: color-mix(in oklch, var(--accent) 14%, transparent);
 }
-.cf-item { padding: 12px 0; border-bottom: 1px solid var(--line, rgba(0,0,0,.08)); }
-.cf-item:last-child { border-bottom: 0; }
+/* separazione tonale, non hairline (il vecchio rgba fisso era pure rotto in dark) */
+.cf-item { padding: 12px 14px; background: var(--bg-elev); border-radius: var(--r-md); }
+.cf-item + .cf-item { margin-top: 10px; }
 .cf-title { font-weight: 700; margin-bottom: 8px; }
 .cf-diff { width: 100%; border-collapse: collapse; font-size: 12px; }
 .cf-diff th, .cf-diff td { text-align: left; padding: 4px 8px; vertical-align: top; }
@@ -1759,6 +1762,14 @@ mark.srch-hl { background: var(--accent-dim); color: var(--accent); border-radiu
 .pk-lbl { color: var(--text-3); width: 56px; flex-shrink: 0; }
 .pk-val { color: var(--text-1); min-width: 0; }
 .pk-note { margin-top: 7px; font-size: 11px; color: var(--text-2); line-height: 1.45; }
+
+/* Uscite coerenti: i popover leggeri escono con pop-out, mai sparizione secca.
+   (closeOverlay aggiunge .closing, attende animationend, poi .hidden) */
+.cal-peek.closing,
+.queue-pop.closing,
+.srch-pop.closing,
+.search-history.closing { animation: pop-out .12s var(--ease) forwards; }
+.dmenu.closing { display: flex; animation: pop-out .12s var(--ease) forwards; }
 
 /* ── Coda offline: badge statusbar + popover ────────────────────────── */
 .sb-queue { cursor: pointer; gap: 6px; color: var(--amber); font-weight: 600; }

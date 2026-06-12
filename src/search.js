@@ -114,7 +114,7 @@ const Search = {
     const pop = $('srch-pop');
     if (!pop) return;
     pop.innerHTML = this._popContent(kind);
-    pop.classList.remove('hidden');
+    pop.classList.remove('hidden', 'closing');
     // Ancorato sotto il chip che l'ha aperto, entro i bordi della testata.
     const head = $('srch-head');
     const hr = head.getBoundingClientRect();
@@ -125,7 +125,7 @@ const Search = {
 
   _closePop() {
     this._openPop = null;
-    $('srch-pop')?.classList.add('hidden');
+    closeOverlay('srch-pop');
   },
 
   _popContent(kind) {

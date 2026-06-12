@@ -1,0 +1,4 @@
+#!/bin/sh
+# Allinea i ?v= di index.html agli hash dei file e ri-stagia se cambiato.
+node scripts/sync-asset-versions.mjs >/dev/null || exit 1
+git add src/index.html

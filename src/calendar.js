@@ -956,7 +956,7 @@ const Calendar = (() => {
 
   function _hidePeek() {
     clearTimeout(_peekTimer); _peekTimer = null; _peekId = null;
-    $('cal-peek')?.classList.add('hidden');
+    closeOverlay('cal-peek');
   }
 
   function _showPeek(block, item) {
@@ -975,7 +975,7 @@ const Calendar = (() => {
       ${row('Luogo', item.luogo)}
       ${row('Dettaglio', item.altro)}
       ${noteText ? `<div class="pk-note">${escHtml(noteText.length > 160 ? noteText.slice(0, 158) + '…' : noteText)}</div>` : ''}`;
-    el.classList.remove('hidden');
+    el.classList.remove('hidden', 'closing');
     // Posiziona a destra del blocco; se non c'è spazio, a sinistra.
     const r = block.getBoundingClientRect();
     const w = 270, h = el.offsetHeight || 120;

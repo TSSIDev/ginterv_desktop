@@ -573,8 +573,13 @@ function renderInterventionDetail(item, opts = {}) {
 // Kebab menu del dettaglio: uno per pannello, chiuso da click esterni, Escape o su una voce.
 function closeDetailMenus() {
   document.querySelectorAll('.dmenu.open').forEach(m => {
-    m.classList.remove('open');
     m.parentElement?.querySelector('.dhx-more')?.setAttribute('aria-expanded', 'false');
+    // Uscita animata: .closing tiene il menu visibile per il pop-out, poi via.
+    m.classList.remove('open');
+    m.classList.add('closing');
+    const done = () => m.classList.remove('closing');
+    m.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 240);
   });
 }
 function toggleDetailMenu(btn) {
@@ -582,7 +587,11 @@ function toggleDetailMenu(btn) {
   if (!menu) return;
   const willOpen = !menu.classList.contains('open');
   closeDetailMenus();
-  if (willOpen) { menu.classList.add('open'); btn.setAttribute('aria-expanded', 'true'); }
+  if (willOpen) {
+    menu.classList.remove('closing');
+    menu.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
 }
 document.addEventListener('mousedown', (e) => {
   if (e.target.closest?.('.dhx-more') || e.target.closest?.('.dmenu')) return;
@@ -1357,7 +1366,7 @@ const App = {
     this._queueOps = ops;
     if (!ops.length) {
       badge.classList.add('hidden');
-      $('queue-pop')?.classList.add('hidden');
+      closeOverlay('queue-pop');
       return;
     }
     badge.classList.remove('hidden');
@@ -1368,7 +1377,7 @@ const App = {
   toggleQueuePopover() {
     const pop = $('queue-pop');
     if (!pop) return;
-    if (!pop.classList.contains('hidden')) { pop.classList.add('hidden'); return; }
+    if (!pop.classList.contains('hidden')) { closeOverlay(pop); return; }
     const labels = { create: 'Creazione', update: 'Modifica', delete: 'Eliminazione' };
     const stat = { pending: 'in attesa', error: 'errore', conflict: 'conflitto' };
     pop.innerHTML = `
@@ -1380,17 +1389,17 @@ const App = {
           <span class="qp-time tnum">${fmtDT(o.created_at)}</span>
         </div>`).join('')}
       <button class="btn qp-flush" onclick="App.flushQueueNow()">Sincronizza ora</button>`;
-    pop.classList.remove('hidden');
+    pop.classList.remove('hidden', 'closing');
     const close = (e) => {
       if (e.target.closest('#queue-pop, #sb-queue')) return;
-      pop.classList.add('hidden');
+      closeOverlay(pop);
       document.removeEventListener('mousedown', close, true);
     };
     setTimeout(() => document.addEventListener('mousedown', close, true), 0);
   },
 
   async flushQueueNow() {
-    $('queue-pop')?.classList.add('hidden');
+    closeOverlay('queue-pop');
     const primary = this.accounts?.find(a => a.is_primary) || this.accounts?.[0];
     if (!primary) return;
     try {
@@ -1685,10 +1694,10 @@ const App = {
   showSearchHistory() {
     this.renderSearchHistory();
     const box = $('search-history');
-    if (box && this._loadSearchHistory().length) box.classList.remove('hidden');
+    if (box && this._loadSearchHistory().length) box.classList.remove('hidden', 'closing');
   },
   hideSearchHistory() {
-    setTimeout(() => $('search-history')?.classList.add('hidden'), 120);
+    setTimeout(() => closeOverlay('search-history'), 120);
   },
 
   // ── Modals ────────────────────────────────────────────────────────
