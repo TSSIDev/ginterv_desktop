@@ -643,6 +643,9 @@ details.fg-extra > summary::-webkit-details-marker { display: none; }
   position: fixed; inset: 0; background: var(--overlay);
   display: flex; align-items: center; justify-content: center;
   z-index: 500; backdrop-filter: blur(4px);
+  /* Stacking context garantito anche in modalità opaca (backdrop-filter off):
+     serve al ghost .float (z -1) per restare sopra lo scurimento. */
+  isolation: isolate;
   animation: overlay-in .2s var(--ease);
 }
 @keyframes overlay-in { from { opacity: 0; backdrop-filter: blur(0); } to { opacity: 1; backdrop-filter: blur(4px); } }
@@ -1266,6 +1269,10 @@ body.cal-moving .day-iv:not(.is-moving) { transition: none; }
    conferma è aperto: bordo pieno, presenza piena. */
 .cal-ghost.pending { border-style: solid; opacity: 1; }
 .cal-ghost.out { opacity: 0; }
+/* Ghost riancorato nell'overlay del modale "Nuovo intervento": il backdrop-filter
+   dell'overlay crea uno stacking context, quindi z -1 lo dipinge sopra lo
+   scurimento ma sotto la card del form. */
+.cal-ghost.float { z-index: -1; transition: opacity .14s var(--ease); }
 
 /* ── Calendar quick-create modal ────────────────────────────────────── */
 .cal-cm-card { background: var(--bg-elev); border: 1px solid transparent; border-radius: var(--r-lg); box-shadow: var(--sh-2); min-width: 220px; overflow: hidden; animation: modal-in .16s var(--ease); }

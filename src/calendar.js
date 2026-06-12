@@ -1226,6 +1226,24 @@ const Calendar = (() => {
       const { isoDate, sh, sm, eh, em } = _pendingCreate;
       _dismissCreateModal(true);
       App.openNewModal({ date: isoDate, startH: sh, startM: sm, endH: eh, endM: em });
+      // Dentro la colonna il ghost finirebbe dietro l'overlay del modale
+      // (blur + scurimento lo cancellano). Riancoralo come figlio dell'overlay
+      // a coordinate fisse: .float (z negativo) lo tiene sopra il backdrop
+      // ma sotto la card del form.
+      const g = _pendingGhost;
+      const ov = $('modal-new');
+      if (g?.isConnected && ov) {
+        const r = g.getBoundingClientRect();
+        g.remove();
+        g.classList.add('float');
+        g.style.position = 'fixed';
+        g.style.left  = r.left + 'px';
+        g.style.top   = r.top + 'px';
+        g.style.width = r.width + 'px';
+        g.style.height = r.height + 'px';
+        g.style.right = 'auto';
+        ov.appendChild(g);
+      }
     },
 
     _dismissCreate() {
