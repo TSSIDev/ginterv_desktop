@@ -52,6 +52,7 @@ const Calendar = (() => {
   // Drag-to-create state
   let _drag = null;
   let _pendingCreate = null;
+  let _pendingGhost = null; // ghost lasciato visibile mentre il popup di conferma è aperto
 
   // Drag-to-expand (resize) state
   let _resize = null;
@@ -66,16 +67,33 @@ const Calendar = (() => {
     return [Math.min(Math.floor(absMin / 60), H_E - 1), absMin % 60];
   }
 
+  // Aggiorna geometria e orario live del ghost (feedback durante il drag).
+  function _ghostSync(ghost, sh, sm, eh, em) {
+    const startTot = (sh - H_S) * 60 + sm;
+    const endTot   = (eh - H_S) * 60 + em;
+    ghost.style.top    = (startTot * H_PX / 60) + 'px';
+    ghost.style.height = Math.max(H_PX / 4, (endTot - startTot) * H_PX / 60) + 'px';
+    const lbl = ghost.firstChild;
+    if (lbl) {
+      const dur = endTot - startTot;
+      lbl.textContent = `${hm(sh, sm)} – ${hm(eh, em)}` + (dur > 0 ? ` · ${minHM(dur)}` : '');
+    }
+  }
+
   function _onDragMove(e) {
     if (!_drag) return;
+    // Soglia anti-flash: il ghost compare solo quando il drag è intenzionale,
+    // così un click secco non fa lampeggiare nulla.
+    if (!_drag.moved) {
+      if (Math.abs(e.clientY - _drag.startY) < 5) return;
+      _drag.moved = true;
+      _drag.ghost.style.visibility = '';
+    }
     const [eh, em] = _yToTime(e.clientY - _drag.rect.top, true);
     const startTot = (_drag.sh - H_S) * 60 + _drag.sm;
     const endTot   = (eh  - H_S) * 60 + em;
-    const topPx = startTot * H_PX / 60;
-    const htPx  = Math.max(H_PX / 4, (endTot - startTot) * H_PX / 60);
     if (endTot >= startTot) {
-      _drag.ghost.style.top    = topPx + 'px';
-      _drag.ghost.style.height = htPx  + 'px';
+      _ghostSync(_drag.ghost, _drag.sh, _drag.sm, eh, em);
       _drag.curH = eh; _drag.curM = em;
     }
   }
@@ -85,13 +103,13 @@ const Calendar = (() => {
     document.removeEventListener('mousemove', _onDragMove);
     document.removeEventListener('mouseup', _onDragUp);
     const { isoDate, sh, sm, curH, curM, ghost } = _drag;
-    ghost.remove();
+    const dragged = _drag.moved && !(curH === sh && curM === sm);
     _drag = null;
-    const dragged = !(curH === sh && curM === sm);
     // Plain click on empty grid: if an event is selected, just deselect it
     // (don't assume the user wants to create). Only create when nothing is
     // selected, or when the user actually dragged out a time range.
     if (!dragged && selectedItem) {
+      ghost.remove();
       selectedItem = null;
       App.clearDetail();
       _markSelectedBlock(null);
@@ -99,7 +117,15 @@ const Calendar = (() => {
     }
     let eh = curH, em = curM;
     if (eh === sh && em === sm) { eh = Math.min(sh + 1, H_E - 1); }
-    _showCreateModal(isoDate, sh, sm, eh, em, e.clientX, e.clientY);
+    // Il ghost resta visibile (pieno) come riferimento del range scelto finché
+    // il popup di conferma è aperto: il feedback non si interrompe al rilascio.
+    _ghostSync(ghost, sh, sm, eh, em);
+    ghost.style.visibility = '';
+    ghost.classList.add('pending');
+    _pendingGhost = ghost;
+    // Popup ancorato al bordo del ghost, non al punto di rilascio del mouse.
+    const gr = ghost.getBoundingClientRect();
+    _showCreateModal(isoDate, sh, sm, eh, em, gr.right + 2, Math.max(gr.top + 24, Math.min(e.clientY, gr.bottom)));
   }
 
   function _showCreateModal(isoDate, sh, sm, eh, em, cx, cy) {
@@ -131,6 +157,16 @@ const Calendar = (() => {
     document.removeEventListener('mousedown', _onCreateOutsideDown, true);
     closeOverlay('cal-create-modal');
     _pendingCreate = null;
+    // Congeda il ghost rimasto a indicare il range (guardia isConnected:
+    // un re-render del calendario può averlo già rimosso dal DOM).
+    if (_pendingGhost) {
+      const g = _pendingGhost;
+      _pendingGhost = null;
+      if (g.isConnected) {
+        g.classList.add('out');
+        setTimeout(() => g.remove(), 160);
+      }
+    }
   }
 
   // ── Drag-to-expand (resize bottom edge → change duration) ─────────────
@@ -1160,10 +1196,12 @@ const Calendar = (() => {
       const [sh, sm] = _yToTime(e.clientY - rect.top);
       const ghost = document.createElement('div');
       ghost.className = 'cal-ghost';
+      ghost.appendChild(document.createElement('span')).className = 'cal-ghost-lbl';
       ghost.style.top    = ((sh - H_S + sm / 60) * H_PX) + 'px';
       ghost.style.height = (H_PX / 2) + 'px';
+      ghost.style.visibility = 'hidden'; // compare al superamento della soglia di drag
       col.appendChild(ghost);
-      _drag = { ghost, col, rect, isoDate, sh, sm, curH: sh, curM: sm };
+      _drag = { ghost, col, rect, isoDate, sh, sm, curH: sh, curM: sm, startY: e.clientY, moved: false };
       document.addEventListener('mousemove', _onDragMove);
       document.addEventListener('mouseup',   _onDragUp);
     },

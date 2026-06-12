@@ -1248,7 +1248,25 @@ body.cal-moving .day-iv:not(.is-moving) { transition: none; }
 .slider-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-3); margin-top: 3px; }
 
 /* ── Calendar drag-to-create ghost ─────────────────────────────────── */
-.cal-ghost { position: absolute; left: 2px; right: 2px; border-radius: 4px; background: var(--accent-dim); border: 1.5px dashed var(--accent); pointer-events: none; z-index: 10; opacity: .8; }
+.cal-ghost {
+  position: absolute; left: 2px; right: 2px; border-radius: 4px;
+  background: var(--accent-dim); border: 1.5px dashed var(--accent);
+  pointer-events: none; z-index: 10; opacity: .8;
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow: hidden;
+  /* Glide magnetico tra gli snap da 15 min: senza, il ghost salta a scatti. */
+  transition: top .09s var(--ease-fast), height .09s var(--ease-fast), opacity .14s var(--ease);
+}
+.cal-ghost-lbl {
+  margin-top: 3px; padding: 1px 7px; border-radius: 999px;
+  font-size: var(--fs-xs); font-weight: 700; color: var(--accent);
+  background: var(--bg-surface); box-shadow: var(--sh-1);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* Dopo il rilascio il ghost resta come riferimento finché il popup di
+   conferma è aperto: bordo pieno, presenza piena. */
+.cal-ghost.pending { border-style: solid; opacity: 1; }
+.cal-ghost.out { opacity: 0; }
 
 /* ── Calendar quick-create modal ────────────────────────────────────── */
 .cal-cm-card { background: var(--bg-elev); border: 1px solid transparent; border-radius: var(--r-lg); box-shadow: var(--sh-2); min-width: 220px; overflow: hidden; animation: modal-in .16s var(--ease); }
