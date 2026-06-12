@@ -281,6 +281,61 @@ pub fn parse_find_items(xml: &str) -> Result<Vec<InterventionItem>> {
     Ok(items)
 }
 
+/// Result of one SyncFolderItems page.
+#[derive(Debug, Clone, Default)]
+pub struct SyncFolderChanges {
+    /// Opaque server token to persist and send back on the next call.
+    pub sync_state: String,
+    /// False = more pages pending, call again with the new token.
+    pub includes_last_item: bool,
+    /// Created or updated items (metadata + ext props, no body).
+    pub changed: Vec<InterventionItem>,
+    /// exchange_item_id of deleted items.
+    pub deleted_ids: Vec<String>,
+}
+
+/// Parse SyncFolderItems response. Creates/Updates carry a full CalendarItem
+/// (picked up by the shared item walker); Deletes carry a bare ItemId that the
+/// walker ignores, so they're collected separately here.
+pub fn parse_sync_folder_items(xml: &str) -> Result<SyncFolderChanges> {
+    check_fault(xml)?;
+    let changed = parse_find_items(xml)?;
+
+    let mut deleted_ids = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut in_delete = false;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if local_name(&e.name()) == "Delete" => in_delete = true,
+            Ok(Event::End(e)) if local_name(&e.name()) == "Delete" => in_delete = false,
+            Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                if in_delete && local_name(&e.name()) == "ItemId" =>
+            {
+                for attr in e.attributes().flatten() {
+                    if attr.key.local_name().into_inner() == b"Id" {
+                        let id = attr.unescape_value().unwrap_or_default().to_string();
+                        if !id.is_empty() {
+                            deleted_ids.push(id);
+                        }
+                    }
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(SyncFolderChanges {
+        sync_state: find_text(xml, "SyncState"),
+        includes_last_item: find_text(xml, "IncludesLastItemInRange") == "true",
+        changed,
+        deleted_ids,
+    })
+}
+
 /// Parse GetItem response → single InterventionItem with body.
 pub fn parse_get_item(xml: &str) -> Result<InterventionItem> {
     check_fault(xml)?;
@@ -491,6 +546,76 @@ mod tests {
         assert!(parse_find_items(FAULT_RESPONSE).is_err());
         let err = parse_find_items(FAULT_RESPONSE).unwrap_err();
         assert!(err.to_string().contains("Access denied"), "err: {}", err);
+    }
+
+    const SYNC_RESPONSE: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Body>
+    <m:SyncFolderItemsResponse>
+      <m:ResponseMessages>
+        <m:SyncFolderItemsResponseMessage ResponseClass="Success">
+          <m:ResponseCode>NoError</m:ResponseCode>
+          <m:SyncState>TOKEN-XYZ==</m:SyncState>
+          <m:IncludesLastItemInRange>true</m:IncludesLastItemInRange>
+          <m:Changes>
+            <t:Create>
+              <t:CalendarItem>
+                <t:ItemId Id="NEW-1" ChangeKey="CK-N1"/>
+                <t:Subject>MR - Nuovo - x - TB Fatturato</t:Subject>
+                <t:Start>2026-06-10T09:00:00Z</t:Start>
+                <t:End>2026-06-10T11:00:00Z</t:End>
+              </t:CalendarItem>
+            </t:Create>
+            <t:Update>
+              <t:CalendarItem>
+                <t:ItemId Id="UPD-1" ChangeKey="CK-U2"/>
+                <t:Subject>MR - Aggiornato - y - TB Fatturato</t:Subject>
+                <t:Start>2026-06-11T14:00:00Z</t:Start>
+                <t:End>2026-06-11T15:00:00Z</t:End>
+              </t:CalendarItem>
+            </t:Update>
+            <t:Delete>
+              <t:ItemId Id="DEL-1" ChangeKey="CK-D"/>
+            </t:Delete>
+          </m:Changes>
+        </m:SyncFolderItemsResponseMessage>
+      </m:ResponseMessages>
+    </m:SyncFolderItemsResponse>
+  </soap:Body>
+</soap:Envelope>"#;
+
+    #[test]
+    fn test_parse_sync_folder_items() {
+        let ch = parse_sync_folder_items(SYNC_RESPONSE).unwrap();
+        assert_eq!(ch.sync_state, "TOKEN-XYZ==");
+        assert!(ch.includes_last_item);
+        assert_eq!(ch.changed.len(), 2);
+        assert_eq!(ch.changed[0].exchange_item_id, "NEW-1");
+        assert_eq!(ch.changed[1].exchange_item_id, "UPD-1");
+        assert_eq!(ch.changed[1].change_key, "CK-U2");
+        assert_eq!(ch.deleted_ids, vec!["DEL-1".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_sync_folder_items_invalid_state_is_error() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+  <soap:Body>
+    <m:SyncFolderItemsResponse>
+      <m:ResponseMessages>
+        <m:SyncFolderItemsResponseMessage ResponseClass="Error">
+          <m:MessageText>The sync state data is invalid.</m:MessageText>
+          <m:ResponseCode>ErrorInvalidSyncStateData</m:ResponseCode>
+        </m:SyncFolderItemsResponseMessage>
+      </m:ResponseMessages>
+    </m:SyncFolderItemsResponse>
+  </soap:Body>
+</soap:Envelope>"#;
+        let err = parse_sync_folder_items(xml).unwrap_err();
+        assert!(err.to_string().contains("ErrorInvalidSyncStateData"), "err: {}", err);
     }
 
     #[test]

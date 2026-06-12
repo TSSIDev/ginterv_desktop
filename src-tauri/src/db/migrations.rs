@@ -21,6 +21,7 @@ pub fn run(conn: &Connection) -> Result<()> {
             durata            TEXT,
             body_html         TEXT,
             luogo             TEXT,
+            body_fetched      INTEGER NOT NULL DEFAULT 0,
             schema_version    INTEGER NOT NULL DEFAULT 1,
             synced_at         TEXT NOT NULL,
             UNIQUE(user_email, exchange_item_id)
@@ -72,6 +73,13 @@ pub fn run(conn: &Connection) -> Result<()> {
     // Optimistic-write marker: create | update | delete (NULL = synced)
     conn.execute(
         "ALTER TABLE intervention_cache ADD COLUMN pending_op TEXT",
+        [],
+    ).ok();
+    // Set once a full GetItem landed the body: stops the eternal refetch of
+    // items whose nome_tecnico is genuinely empty (default 0 = self-healing
+    // one-shot refetch for pre-existing rows)
+    conn.execute(
+        "ALTER TABLE intervention_cache ADD COLUMN body_fetched INTEGER NOT NULL DEFAULT 0",
         [],
     ).ok();
     // get_range filters on (user_email, start_dt); list_pending on (user_email, status)

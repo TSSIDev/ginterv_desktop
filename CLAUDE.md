@@ -61,7 +61,7 @@ src-tauri/      backend Rust (Tauri 2): EWS, SQLite cache, coda offline, PDF, em
 | `db/cache.rs` | Cache interventi; `CACHE_SCHEMA_VERSION` da incrementare se cambia struttura |
 | `db/queue.rs` | Coda operazioni offline (pending/conflict/error) |
 | `db/migrations.rs` | Migrazioni SQLite |
-| `sync.rs` | Loop sync in background (tauri::async_runtime) |
+| `sync.rs` | Loop sync in background (tauri::async_runtime); delta via EWS `SyncFolderItems` (token `sync_state_{email}` in app_config), reconcile FindItem 1×/24h, fallback su token invalido |
 | `flush.rs` | Flush coda pending verso Exchange |
 | `ntlm.rs` | Handshake NTLM |
 | `keychain.rs` | Password nel keychain di sistema |

@@ -106,6 +106,47 @@ pub fn get_items(ids: &[(&str, &str)]) -> String {
     soap_envelope(&body)
 }
 
+/// SyncFolderItems — server-side delta sync of the calendar folder.
+/// With `sync_state = None` starts a fresh enumeration; with a token returns
+/// only creates/updates/deletes since that token. The shape carries the same
+/// metadata + extended props as FindItem so changed items can be cached
+/// immediately, with GetItem needed only for the body.
+///
+/// NB: unlike CalendarView, recurring appointments come back as the master
+/// only (no occurrence expansion) — the periodic FindItem reconcile covers that.
+pub fn sync_folder_items(email: &str, sync_state: Option<&str>, max_changes: usize) -> String {
+    let meta_field_uris = r#"<t:FieldURI FieldURI="item:Subject"/>
+        <t:FieldURI FieldURI="calendar:Start"/>
+        <t:FieldURI FieldURI="calendar:End"/>
+        <t:FieldURI FieldURI="item:Location"/>"#;
+    let state_xml = sync_state
+        .map(|s| format!("<m:SyncState>{}</m:SyncState>\n      ", xml_escape(s)))
+        .unwrap_or_default();
+    let body = format!(
+        r#"<m:SyncFolderItems>
+      <m:ItemShape>
+        <t:BaseShape>IdOnly</t:BaseShape>
+        <t:AdditionalProperties>
+        {meta}
+        {ext}
+        </t:AdditionalProperties>
+      </m:ItemShape>
+      <m:SyncFolderId>
+        <t:DistinguishedFolderId Id="calendar">
+          <t:Mailbox><t:EmailAddress>{email}</t:EmailAddress></t:Mailbox>
+        </t:DistinguishedFolderId>
+      </m:SyncFolderId>
+      {state}<m:MaxChangesReturned>{max_changes}</m:MaxChangesReturned>
+    </m:SyncFolderItems>"#,
+        meta = meta_field_uris,
+        ext = ext_field_uris(),
+        email = xml_escape(email),
+        state = state_xml,
+        max_changes = max_changes,
+    );
+    soap_envelope(&body)
+}
+
 pub struct CreateItemData<'a> {
     pub email: &'a str,
     pub subject: &'a str,
@@ -314,5 +355,24 @@ mod tests {
         let xml = get_items(&[("a&b", "c<d")]);
         assert!(xml.contains("a&amp;b"));
         assert!(xml.contains("c&lt;d"));
+    }
+
+    #[test]
+    fn sync_folder_items_without_state_omits_syncstate() {
+        let xml = sync_folder_items("u@u.com", None, 512);
+        assert!(xml.contains("<m:SyncFolderItems>"));
+        assert!(!xml.contains("<m:SyncState>"));
+        assert!(xml.contains("<m:MaxChangesReturned>512</m:MaxChangesReturned>"));
+        assert!(xml.contains("u@u.com"));
+        // metadata + ext props in shape so cache can be primed without GetItem
+        assert!(xml.contains(r#"FieldURI="calendar:Start""#));
+        assert!(xml.contains(r#"PropertyName="Nome tecnico:""#));
+    }
+
+    #[test]
+    fn sync_folder_items_with_state_includes_escaped_token() {
+        let xml = sync_folder_items("u@u.com", Some("abc<&>123"), 256);
+        assert!(xml.contains("<m:SyncState>abc&lt;&amp;&gt;123</m:SyncState>"));
+        assert!(xml.contains("<m:MaxChangesReturned>256</m:MaxChangesReturned>"));
     }
 }

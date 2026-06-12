@@ -1,13 +1,13 @@
 use rusqlite::{params, Connection, Result, Row};
 use serde::{Deserialize, Serialize};
 
-pub const CACHE_SCHEMA_VERSION: i64 = 1;
+pub const CACHE_SCHEMA_VERSION: i64 = 2;
 
 /// Column list shared by every `intervention_cache` SELECT (order matches `row_to_cached`).
 const CACHE_COLS: &str = "id, user_email, exchange_item_id, change_key, start_dt, end_dt,
         subject, nome_tecnico, ragione_sociale, descrizione, altro,
         tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-        luogo, pending_op, schema_version, synced_at";
+        luogo, pending_op, body_fetched, schema_version, synced_at";
 
 fn row_to_cached(r: &Row) -> Result<CachedItem> {
     Ok(CachedItem {
@@ -29,8 +29,9 @@ fn row_to_cached(r: &Row) -> Result<CachedItem> {
         body_html: r.get(15)?,
         luogo: r.get(16)?,
         pending_op: r.get(17)?,
-        schema_version: r.get(18)?,
-        synced_at: r.get(19)?,
+        body_fetched: r.get::<_, i64>(18)? != 0,
+        schema_version: r.get(19)?,
+        synced_at: r.get(20)?,
     })
 }
 
@@ -54,6 +55,9 @@ pub struct CachedItem {
     pub body_html: Option<String>,
     pub luogo: Option<String>,
     pub pending_op: Option<String>,
+    /// True once a full GetItem landed the body for this row. Guards against
+    /// refetching forever items whose nome_tecnico is genuinely empty.
+    pub body_fetched: bool,
     pub schema_version: i64,
     pub synced_at: String,
 }
@@ -91,6 +95,7 @@ impl CachedItem {
             body_html: Some(item.body_html.clone()),
             luogo: Some(item.luogo.clone()),
             pending_op: None,
+            body_fetched: true,
             schema_version: CACHE_SCHEMA_VERSION,
             synced_at: chrono::Utc::now().to_rfc3339(),
         }
@@ -126,8 +131,8 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             user_email, exchange_item_id, change_key, start_dt, end_dt,
             subject, nome_tecnico, ragione_sociale, descrizione, altro,
             tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-            luogo, pending_op, schema_version, synced_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
+            luogo, pending_op, body_fetched, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
         ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
             change_key        = excluded.change_key,
             start_dt          = excluded.start_dt,
@@ -144,6 +149,7 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             body_html         = excluded.body_html,
             luogo             = excluded.luogo,
             pending_op        = excluded.pending_op,
+            body_fetched      = excluded.body_fetched,
             schema_version    = excluded.schema_version,
             synced_at         = excluded.synced_at",
         params![
@@ -152,7 +158,7 @@ pub fn upsert_item(conn: &Connection, item: &CachedItem) -> Result<()> {
             item.ragione_sociale, item.descrizione, item.altro,
             item.tipo_tariffa, item.tipo_fatturazione, item.trasferta,
             item.durata, item.body_html, item.luogo, item.pending_op,
-            item.schema_version, item.synced_at,
+            item.body_fetched as i64, item.schema_version, item.synced_at,
         ],
     )?;
     Ok(())
@@ -168,8 +174,8 @@ pub fn upsert_item_metadata(conn: &Connection, item: &CachedItem) -> Result<()> 
             user_email, exchange_item_id, change_key, start_dt, end_dt,
             subject, nome_tecnico, ragione_sociale, descrizione, altro,
             tipo_tariffa, tipo_fatturazione, trasferta, durata, body_html,
-            luogo, pending_op, schema_version, synced_at
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)
+            luogo, pending_op, body_fetched, schema_version, synced_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,0,?18,?19)
         ON CONFLICT(user_email, exchange_item_id) DO UPDATE SET
             change_key        = excluded.change_key,
             start_dt          = excluded.start_dt,
@@ -394,6 +400,7 @@ mod tests {
             body_html: Some("<p>note</p>".into()),
             luogo: None,
             pending_op: None,
+            body_fetched: true,
             schema_version: CACHE_SCHEMA_VERSION,
             synced_at: "2024-01-10T12:00:00".into(),
         };
@@ -417,7 +424,7 @@ mod tests {
             subject: None, nome_tecnico: None, ragione_sociale: None,
             descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, luogo: None, pending_op: None, schema_version: 1,
+            body_html: None, luogo: None, pending_op: None, body_fetched: true, schema_version: 1,
             synced_at: "2024-03-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -443,7 +450,7 @@ mod tests {
             subject: Some("Old".into()), nome_tecnico: None, ragione_sociale: None,
             descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: Some("<p>keep me</p>".into()), luogo: None, pending_op: None, schema_version: 1,
+            body_html: Some("<p>keep me</p>".into()), luogo: None, pending_op: None, body_fetched: true, schema_version: 1,
             synced_at: "2024-06-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -469,12 +476,60 @@ mod tests {
             end_dt: "2024-07-01T09:00:00".into(), subject: Some("Fresh".into()),
             nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
             tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: Some(String::new()), luogo: None, pending_op: None, schema_version: 1,
+            body_html: Some(String::new()), luogo: None, pending_op: None, body_fetched: true, schema_version: 1,
             synced_at: "2024-07-01T10:00:00".into(),
         };
         upsert_item_metadata(&conn, &item).unwrap();
         let r = get_by_item_id(&conn, "u@u.com", "EEE").unwrap().unwrap();
         assert_eq!(r.subject.as_deref(), Some("Fresh"));
+    }
+
+    #[test]
+    fn test_upsert_item_marks_body_fetched() {
+        let conn = setup();
+        let item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "BF1".into(),
+            change_key: "CK".into(), start_dt: "2026-01-01T08:00:00".into(),
+            end_dt: "2026-01-01T09:00:00".into(), subject: Some("s".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: Some("<p>b</p>".into()), luogo: None, pending_op: None,
+            body_fetched: true, schema_version: CACHE_SCHEMA_VERSION,
+            synced_at: "2026-01-01T10:00:00".into(),
+        };
+        upsert_item(&conn, &item).unwrap();
+        let r = get_by_item_id(&conn, "u@u.com", "BF1").unwrap().unwrap();
+        assert!(r.body_fetched);
+    }
+
+    #[test]
+    fn test_upsert_metadata_preserves_body_fetched() {
+        let conn = setup();
+        let mut item = CachedItem {
+            id: 0, user_email: "u@u.com".into(), exchange_item_id: "BF2".into(),
+            change_key: "CK1".into(), start_dt: "2026-02-01T08:00:00".into(),
+            end_dt: "2026-02-01T09:00:00".into(), subject: Some("s".into()),
+            nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
+            tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
+            body_html: None, luogo: None, pending_op: None,
+            body_fetched: true, schema_version: CACHE_SCHEMA_VERSION,
+            synced_at: "2026-02-01T10:00:00".into(),
+        };
+        // Metadata-only insert: row starts NOT body-fetched even if struct says so.
+        upsert_item_metadata(&conn, &item).unwrap();
+        let r = get_by_item_id(&conn, "u@u.com", "BF2").unwrap().unwrap();
+        assert!(!r.body_fetched);
+
+        // Full upsert marks it fetched.
+        upsert_item(&conn, &item).unwrap();
+        assert!(get_by_item_id(&conn, "u@u.com", "BF2").unwrap().unwrap().body_fetched);
+
+        // A later metadata refresh must NOT clear the flag.
+        item.change_key = "CK2".into();
+        upsert_item_metadata(&conn, &item).unwrap();
+        let r = get_by_item_id(&conn, "u@u.com", "BF2").unwrap().unwrap();
+        assert_eq!(r.change_key, "CK2");
+        assert!(r.body_fetched);
     }
 
     #[test]
@@ -486,7 +541,7 @@ mod tests {
             end_dt: "2024-08-01T09:00:00".into(), subject: Some("x".into()),
             nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
             tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, luogo: None, pending_op: None, schema_version: 1,
+            body_html: None, luogo: None, pending_op: None, body_fetched: true, schema_version: 1,
             synced_at: "2024-08-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -510,7 +565,7 @@ mod tests {
             end_dt: "2024-09-01T09:00:00".into(), subject: Some("new".into()),
             nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
             tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, luogo: None, pending_op: Some("create".into()), schema_version: 1,
+            body_html: None, luogo: None, pending_op: Some("create".into()), body_fetched: true, schema_version: 1,
             synced_at: "2024-09-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -538,7 +593,7 @@ mod tests {
             end_dt: "2024-10-01T09:00:00".into(), subject: Some("s".into()),
             nome_tecnico: None, ragione_sociale: None, descrizione: None, altro: None,
             tipo_tariffa: None, tipo_fatturazione: None, trasferta: None, durata: None,
-            body_html: None, luogo: None, pending_op: Some("update".into()), schema_version: 1,
+            body_html: None, luogo: None, pending_op: Some("update".into()), body_fetched: true, schema_version: 1,
             synced_at: "2024-10-01T10:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
@@ -557,7 +612,7 @@ mod tests {
             end_dt: "2024-05-01T11:00:00".into(), subject: None, nome_tecnico: None,
             ragione_sociale: None, descrizione: None, altro: None, tipo_tariffa: None,
             tipo_fatturazione: None, trasferta: None, durata: None, body_html: None,
-            luogo: None, pending_op: None, schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
+            luogo: None, pending_op: None, body_fetched: true, schema_version: 1, synced_at: "2024-05-01T12:00:00".into(),
         };
         upsert_item(&conn, &item).unwrap();
         delete_item(&conn, "a@b.com", "CCC").unwrap();
