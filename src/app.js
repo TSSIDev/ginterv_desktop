@@ -62,19 +62,8 @@ if (typeof window.__TAURI__ !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => WinControls.init());
 }
 
-// ── HTML escape ─────────────────────────────────────────────────────
-function escHtml(s) {
-  if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Badge shown on items with an unsynced local change (optimistic write).
-function pendingBadge(item) {
-  if (!item || !item.pending_op) return '';
-  const label = item.pending_op === 'delete' ? 'eliminazione…'
-    : item.pending_op === 'create' ? 'in invio…' : 'modifica…';
-  return `<span class="pending-badge">${label}</span>`;
-}
+// escHtml / pendingBadge / buildSubject / fmtDT / durMinToStr vivono in shared.js
+// (caricato prima): helper puri, testati in tests/shared.test.js.
 
 function GIIcon(name, size = 12) {
   const attrs = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"`;
@@ -192,29 +181,7 @@ function createFuzzyDropdown(container, options, placeholder, onSelect, initialV
   input.addEventListener('blur', () => setTimeout(closeDropdown, 150));
 
   if (initialValue) setValue(initialValue);
-  return { setValue, getValue, destroy: () => container.innerHTML = '' };
-}
-
-// ── Subject preview builder (mirrors Rust build_subject) ─────────────
-function buildSubject(nomeTecnico, ragioneSociale, descrizione, altro, tipoTariffa, tipoFatturazione) {
-  const parts = [nomeTecnico, ragioneSociale, descrizione, altro].map(s => (s || '').trim());
-  while (parts.length && !parts[parts.length - 1]) parts.pop();
-  const tariff = `${(tipoTariffa||'').trim()} ${(tipoFatturazione||'').trim()}`.trim();
-  if (tariff) parts.push(tariff);
-  return parts.filter(Boolean).join(' - ');
-}
-
-// ── Format helpers ───────────────────────────────────────────────────
-function fmtDT(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' }) +
-    ' ' + d.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
-}
-
-function durMinToStr(min) {
-  const h = Math.floor(min / 60), m = min % 60;
-  return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+  return { setValue, getValue, destroy: () => { container.innerHTML = ''; } };
 }
 
 // Graceful overlay/popup dismiss: play exit animation, then hide.
@@ -250,7 +217,7 @@ function confirmDialog({ title = 'Conferma', message = '', confirmText = 'Confer
           <div class="modal-title">${escHtml(title)}</div>
           <button class="modal-close" data-act="cancel" aria-label="Chiudi">&times;</button>
         </div>
-        <div style="padding:2px 22px 18px;font-size:13px;color:var(--text-2);line-height:1.5">${escHtml(message)}</div>
+        <div style="padding:2px 22px 18px;font-size:var(--fs-base);color:var(--text-2);line-height:1.5">${escHtml(message)}</div>
         <div style="display:flex;gap:8px;justify-content:flex-end;padding:0 22px 18px">
           <button class="btn" data-act="cancel">${escHtml(cancelText)}</button>
           <button class="btn ${danger ? 'danger' : 'primary'}" data-act="ok">${escHtml(confirmText)}</button>
@@ -800,8 +767,8 @@ const App = {
     el.innerHTML = this.accounts.map(a =>
       `<div style="padding:5px 0;display:flex;align-items:center;gap:8px">
         <div class="sb-dot g"></div>
-        <div><div style="font-weight:600;font-size:12px">${escHtml(a.sigla || '—')}</div>
-        <div style="font-size:10px;color:var(--text-3)">${escHtml(a.email)}</div></div>
+        <div><div style="font-weight:600;font-size:var(--fs-sm)">${escHtml(a.sigla || '—')}</div>
+        <div style="font-size:var(--fs-xs);color:var(--text-3)">${escHtml(a.email)}</div></div>
        </div>`
     ).join('');
   },
@@ -1188,7 +1155,7 @@ const App = {
         return;
       }
       count.textContent = 'Nessun intervento';
-      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:12px">Nessun intervento nel periodo selezionato</div>';
+      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:var(--fs-sm)">Nessun intervento nel periodo selezionato</div>';
       return;
     }
     count.textContent = `${items.length} interventi`;
@@ -1641,7 +1608,7 @@ const App = {
         ? `<table class="cf-diff"><thead><tr><th></th><th>Le mie modifiche</th><th>Versione server</th></tr></thead><tbody>${rows}</tbody></table>`
         : `<p class="cf-nodiff">Differenze non mostrabili (item eliminato sul server).</p>`;
       return `<div class="cf-item">
-        <div class="cf-title">${escHtml((c.mine && c.mine.subject) || c.op_type)}</div>
+        <div class="cf-title">${escHtml((c.mine?.subject) || c.op_type)}</div>
         ${diff}
         <div class="cf-actions">
           <button class="btn" onclick="App.resolveConflict(${c.op_id}, 'mine')">Tieni le mie modifiche</button>
@@ -1834,7 +1801,7 @@ const App = {
   async openEmailModal(itemJson) {
     this._currentEmailItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     const item = this._currentEmailItem;
-    if (item.exchange_item_id && item.exchange_item_id.startsWith('tmp-')) {
+    if (item.exchange_item_id?.startsWith('tmp-')) {
       toast('Intervento non ancora sincronizzato', 'warning');
       return;
     }
@@ -1851,7 +1818,7 @@ const App = {
       <div class="fg"><label class="fg-lbl">Messaggio</label><textarea class="fg-ta" id="email-body" rows="4">Gentili,\n\nIn allegato il report dell'intervento del ${fmtDT(item.start_dt)}.\n\nCordiali saluti</textarea></div>
       <div style="display:flex;align-items:center;gap:10px">
         <button class="btn" type="button" id="email-preview-btn" onclick="App.emailPreviewPdf()">${GIIcon('file')} Anteprima PDF</button>
-        <span style="font-size:11px;color:var(--text-3)">Il PDF verrà allegato automaticamente.</span>
+        <span style="font-size:var(--fs-xs);color:var(--text-3)">Il PDF verrà allegato automaticamente.</span>
       </div>
       <div id="email-pdf-preview" class="email-pdf-preview hidden"></div>`;
     this._revokeEmailPdf();
@@ -1891,7 +1858,7 @@ const App = {
   openPdfModal(itemJson) {
     this._currentPdfItem = typeof itemJson === 'string' ? JSON.parse(itemJson) : itemJson;
     $('modal-pdf-body').innerHTML = `
-      <p style="color:var(--text-2);font-size:12px;margin-bottom:14px">Esporta il report PDF per: <strong>${this._currentPdfItem.ragione_sociale}</strong></p>
+      <p style="color:var(--text-2);font-size:var(--fs-sm);margin-bottom:14px">Esporta il report PDF per: <strong>${this._currentPdfItem.ragione_sociale}</strong></p>
       <div class="fg">
         <label class="fg-lbl">Formato</label>
         <select class="fg-sel" id="pdf-format">
@@ -2102,7 +2069,7 @@ const App = {
   async pdfExport() {
     const primary = this.accounts.find(a => a.is_primary) || this.accounts[0];
     const item = this._currentPdfItem;
-    if (item.exchange_item_id && item.exchange_item_id.startsWith('tmp-')) {
+    if (item.exchange_item_id?.startsWith('tmp-')) {
       toast('Intervento non ancora sincronizzato', 'warning');
       return;
     }

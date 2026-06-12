@@ -13,6 +13,8 @@ src-tauri/      backend Rust (Tauri 2): EWS, SQLite cache, coda offline, PDF, em
 
 - Avvio dev: `cargo tauri dev` (da `src-tauri/`) oppure `npx @tauri-apps/cli dev`
 - Test backend: `cargo test` da `src-tauri/`
+- Test frontend: `npm test` (node:test su `tests/`, zero dipendenze)
+- Lint frontend: `npm run lint` (Biome, config in `biome.json`; formatter spento di proposito)
 - Dati: appuntamenti vivono su Exchange (EWS/SOAP); SQLite è cache + coda operazioni offline
 - Password: keychain di sistema (`keychain.rs`), mai su disco in chiaro
 
@@ -21,7 +23,8 @@ src-tauri/      backend Rust (Tauri 2): EWS, SQLite cache, coda offline, PDF, em
 | File | Contenuto |
 |------|-----------|
 | `index.html` | Unica pagina; script caricati con `?v=N` manuale (**bump dopo ogni modifica JS/CSS**) |
-| `app.js` | Helpers globali (`invoke`, `escHtml`, `toast`, `confirmDialog`, `sanitizeNote`, `htmlToText`, `GIIcon`, `createFuzzyDropdown`, `closeOverlay`, `syncSeg`) + `Wizard` onboarding + `App` (navigazione, lista, detail, form, modali) |
+| `shared.js` | Helper puri (`escHtml`, `buildSubject`, `fmtDT`, `durMinToStr`, `pendingBadge`), caricato per primo; testato in `tests/shared.test.js` |
+| `app.js` | Helpers DOM globali (`invoke`, `toast`, `confirmDialog`, `sanitizeNote`, `htmlToText`, `GIIcon`, `createFuzzyDropdown`, `closeOverlay`, `syncSeg`) + `Wizard` onboarding + `App` (navigazione, lista, detail, form, modali) |
 | `calendar.js` | `Calendar` (IIFE): viste settimana/giorno/mese, drag/resize, peek popover |
 | `search.js` | `Search`: omnibar Ctrl+K |
 | `settings.js` | `Settings`: account, tema, trasparenza, dropdown data |

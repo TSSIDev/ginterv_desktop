@@ -97,7 +97,7 @@
     <div class="sidebar">
       <div class="sidebar-scroll">
         <div class="sb-section">
-          <div id="sidebar-accounts" style="font-size:12px;color:var(--text-2)">Caricamento…</div>
+          <div id="sidebar-accounts" style="font-size:var(--fs-sm);color:var(--text-2)">Caricamento…</div>
         </div>
       </div>
       <div class="side-nav">
@@ -163,7 +163,7 @@
 
       <div class="view" id="view-interventions">
         <div id="list-toolbar" style="padding:10px 14px 6px;display:flex;gap:8px;align-items:center">
-          <span style="font-size:11px;color:var(--text-3)" id="list-count">Nessun intervento</span>
+          <span style="font-size:var(--fs-xs);color:var(--text-3)" id="list-count">Nessun intervento</span>
         </div>
         <div id="list-container" style="overflow-y:auto;flex:1;padding-top:6px"></div>
       </div>
@@ -242,7 +242,7 @@
       </div>
       <div class="sig-workspace">
         <div>
-          <div style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">Firma del cliente</div>
+          <div style="font-size:var(--fs-xs);font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">Firma del cliente</div>
           <div class="sig-canvas-wrap" id="sig-canvas-wrap">
             <div class="sig-canvas-placeholder" id="sig-canvas-placeholder">
               <div class="sig-cp-line"></div>
@@ -257,7 +257,7 @@
               <button class="sig-pen-size" title="Penna spessa" onclick="App.firmaPenSize(this,6)" style="font-size:18px">●</button>
               <button class="sig-clear" onclick="App.firmaClear()">Cancella</button>
             </div>
-            <div style="font-size:10px;color:var(--text-3)">Il PDF verrà rigenerato dopo la conferma</div>
+            <div style="font-size:var(--fs-xs);color:var(--text-3)">Il PDF verrà rigenerato dopo la conferma</div>
           </div>
           <div class="sig-legal" id="sig-legal">Il cliente conferma il lavoro svolto. Dopo la conferma, firma e timestamp vengono collegati al rapporto.</div>
         </div>
@@ -597,7 +597,7 @@
 <div id="cal-create-modal" class="hidden" style="position:fixed;z-index:500">
   <div class="cal-cm-card">
     <div class="cal-cm-hdr">
-      <span style="font-size:12px;font-weight:700;color:var(--text-1)">Nuovo intervento</span>
+      <span style="font-size:var(--fs-sm);font-weight:700;color:var(--text-1)">Nuovo intervento</span>
       <button class="modal-close" style="font-size:16px;line-height:1" onclick="Calendar._dismissCreate()" aria-label="Chiudi creazione rapida">×</button>
     </div>
     <div id="cal-cm-info" style="padding:8px 12px 4px"></div>
@@ -705,9 +705,10 @@
 
 <div id="toast-container"></div>
 <script src="vendor/purify.min.js?v=1"></script>
+<script src="shared.js?v=1"></script>
 <script src="search.js?v=12"></script>
-<script src="settings.js?v=16"></script>
+<script src="settings.js?v=17"></script>
 <script src="calendar.js?v=37"></script>
-<script src="app.js?v=50"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@ const Settings = {
     this._section = 'account';
     this._addMode = false;
     this._accounts = await invoke('list_accounts_cmd').catch(() => []);
-    const email = (this._accounts[0] || {}).email || '';
+    const email = this._accounts[0]?.email || '';
 
     // Load all async data at once — navigation is then fully synchronous
     const [dd, sig, interval, concurrency, window] = await Promise.all([
@@ -348,7 +348,7 @@ const Settings = {
   async _saveFirma() {
     if (!this._sigCanvas || !this._sigHasDrawn) { toast('Disegna prima la firma', 'warning'); return; }
     const b64 = this._sigCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
-    const email = (this._accounts[0] || {}).email || '';
+    const email = this._accounts[0]?.email || '';
     if (!email) { toast('Nessun account configurato', 'error'); return; }
     try {
       await invoke('set_config_value', { key: 'tech_signature_' + email, value: b64 });
@@ -606,7 +606,7 @@ const Settings = {
   },
 
   _ddIsDirty() {
-    const saved = (this._dropdownData || {})[this._ddActive] || [];
+    const saved = this._dropdownData?.[this._ddActive] || [];
     const cur = this._ddCurrentItems();
     return cur.length !== saved.length || cur.some((v, i) => v !== saved[i]);
   },
@@ -639,7 +639,7 @@ const Settings = {
 
   _ddRevert() {
     const ta = $('st-dd-' + this._ddActive);
-    if (ta) ta.value = ((this._dropdownData || {})[this._ddActive] || []).join('\n');
+    if (ta) ta.value = (this._dropdownData?.[this._ddActive] || []).join('\n');
     this._ddDirty();
   },
 

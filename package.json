@@ -1,0 +1,12 @@
+{
+  "name": "gestoreinterventi-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "lint": "biome lint src",
+    "test": "node --test \"tests/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4"
+  }
+}

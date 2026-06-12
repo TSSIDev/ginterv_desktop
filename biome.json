@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "include": ["src/*.js"],
+    "ignore": ["src/vendor/**"]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noVar": "error",
+        "useConst": "off",
+        "useTemplate": "off",
+        "useSingleVarDeclarator": "off",
+        "useNumberNamespace": "off",
+        "noParameterAssign": "off",
+        "noUnusedTemplateLiteral": "off"
+      },
+      "suspicious": {
+        "noDoubleEquals": "warn"
+      },
+      "complexity": {
+        "useArrowFunction": "off",
+        "noForEach": "off"
+      }
+    }
+  },
+  "javascript": {
+    "globals": [
+      "App", "Calendar", "Search", "Settings", "Wizard", "WinControls",
+      "DOMPurify", "escHtml", "GIIcon", "toast", "invoke", "listenEvent",
+      "createFuzzyDropdown", "buildSubject", "fmtDT", "durMinToStr",
+      "closeOverlay", "confirmDialog", "syncSeg", "sanitizeNote",
+      "htmlToText", "renderInterventionDetail", "closeDetailMenus",
+      "toggleDetailMenu", "pendingBadge", "$"
+    ]
+  }
+}
