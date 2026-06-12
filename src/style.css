@@ -270,7 +270,8 @@ textarea:focus-visible,
   border-radius: calc(var(--r-md) - 3px);
   background: var(--accent-solid);
   box-shadow: var(--sh-1);
-  transition: transform .26s var(--ease-expo), width .26s var(--ease-expo), opacity .18s var(--ease);
+  transform-origin: left center;
+  transition: transform .26s var(--ease-expo), opacity .18s var(--ease);
   pointer-events: none;
 }
 .seg-thumb.ready { opacity: 1; }
@@ -740,6 +741,21 @@ details.fg-extra > summary::-webkit-details-marker { display: none; }
 .wiz-body { padding: 0 32px 28px; }
 .step-title { font-size: var(--fs-xl); font-weight: 700; color: var(--text-1); letter-spacing: -.02em; margin-bottom: 6px; }
 .step-desc { font-size: var(--fs-sm); color: var(--text-2); margin-bottom: 24px; line-height: 1.6; }
+.wiz-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px; }
+.wiz-card {
+  background: var(--bg-elev); box-shadow: var(--sh-1);
+  border-radius: var(--r-md); padding: 14px;
+}
+.wiz-card-ico { color: var(--accent); margin-bottom: 8px; display: flex; }
+.wiz-card-t { font-size: var(--fs-sm); font-weight: 700; margin-bottom: 4px; }
+.wiz-card-d { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.45; }
+.wiz-account {
+  background: var(--bg-elev); box-shadow: var(--sh-1);
+  border-radius: var(--r-md); padding: 14px; margin-bottom: 16px; font-size: var(--fs-sm);
+}
+.wiz-account-lbl { color: var(--text-2); margin-bottom: 2px; }
+.wiz-account-mail { font-weight: 700; }
+.wiz-account-srv { color: var(--text-3); font-size: var(--fs-xs); margin-top: 4px; }
 .test-btn {
   width: 100%; padding: 11px; border-radius: 8px; border: 1px dashed var(--border-2);
   background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600;

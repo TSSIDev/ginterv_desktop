@@ -434,7 +434,7 @@ const Settings = {
       await invoke('set_config_value', { key: 'sync_window_days', value: val });
       this._syncWindow = parseInt(val);
       if (val === '3650') {
-        toast('Periodo "Tutto" salvato — il prossimo sync sarà più lento', 'info');
+        toast('Periodo "Tutto" salvato: il prossimo sync sarà più lento', 'info');
       } else {
         toast('Periodo salvato', 'success');
       }

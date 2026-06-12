@@ -384,10 +384,11 @@ const Calendar = (() => {
     const dur = end ? Math.round((end - start) / 60000) : 60;
     return {
       _raw: item,
-      sigla: item.nome_tecnico || '?',
-      client: item.ragione_sociale || '—',
-      tipo: item.descrizione || '',
-      altro: item.altro || '',
+      // Campi pre-escapati: i template dei blocchi li inseriscono direttamente in HTML.
+      sigla: escHtml(item.nome_tecnico) || '?',
+      client: escHtml(item.ragione_sociale) || '—',
+      tipo: escHtml(item.descrizione),
+      altro: escHtml(item.altro),
       color: colorOf(item.nome_tecnico),
       startD: start,
       sh: start.getHours(),
@@ -775,6 +776,8 @@ const Calendar = (() => {
       let pills = '';
       dayItems.slice(0, MAX_PILLS).forEach(iv => {
         pills += `<div class="mth-pill" data-cal-id="${escHtml(calBlockId(iv._raw))}" style="color:${iv.color}"
+          tabindex="0" role="button" aria-label="${hm(iv.sh, iv.sm)} · ${iv.client}"
+          onkeydown="event.stopPropagation();Calendar._blockKey(event,${escHtml(JSON.stringify(iv._raw))})"
           onclick="event.stopPropagation();Calendar._select(${escHtml(JSON.stringify(iv._raw))})">
           <div class="mth-pill-txt">${iv.client}</div>
         </div>`;

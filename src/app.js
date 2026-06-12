@@ -292,8 +292,19 @@ function syncSeg(container) {
   // exactly on the button (integer offsets drift ~1px with sub-pixel button widths).
   const cRect = container.getBoundingClientRect();
   const aRect = active.getBoundingClientRect();
+  const targetX = aRect.left - cRect.left - (container.clientLeft || 0);
+  // FLIP: la larghezza cambia di scatto, lo scarto si recupera con scaleX che
+  // anima verso 1 — solo transform, niente transizione di layout su width.
+  const prev = thumb.getBoundingClientRect();
   thumb.style.width = aRect.width + 'px';
-  thumb.style.transform = `translateX(${aRect.left - cRect.left - (container.clientLeft || 0)}px)`;
+  if (thumb.classList.contains('ready') && prev.width && aRect.width) {
+    const startX = prev.left - cRect.left - (container.clientLeft || 0);
+    thumb.style.transition = 'none';
+    thumb.style.transform = `translateX(${startX}px) scaleX(${prev.width / aRect.width})`;
+    void thumb.offsetWidth;
+    thumb.style.transition = '';
+  }
+  thumb.style.transform = `translateX(${targetX}px) scaleX(1)`;
   requestAnimationFrame(() => thumb.classList.add('ready'));
 }
 window.addEventListener('resize', () => {
@@ -340,22 +351,22 @@ const Wizard = {
       next.textContent = 'Inizia →';
       el.innerHTML = `
         <div class="step-title">Benvenuto in Gestore Interventi</div>
-        <div class="step-desc">L'app che sincronizza i tuoi interventi tecnici con Exchange Server. Nessun server intermedio — tutto gira localmente sul tuo PC.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
-          <div style="background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:10px;padding:14px">
-            <div style="font-size:20px;margin-bottom:6px">📅</div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:4px">Calendario</div>
-            <div style="font-size:11px;color:var(--text-3)">Vista settimana, giorno e mese</div>
+        <div class="step-desc">L'app che sincronizza i tuoi interventi tecnici con Exchange Server. Nessun server intermedio: tutto gira localmente sul tuo PC.</div>
+        <div class="wiz-cards">
+          <div class="wiz-card">
+            <div class="wiz-card-ico">${GIIcon('cal', 18)}</div>
+            <div class="wiz-card-t">Calendario</div>
+            <div class="wiz-card-d">Vista settimana, giorno e mese</div>
           </div>
-          <div style="background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:10px;padding:14px">
-            <div style="font-size:20px;margin-bottom:6px">📝</div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:4px">Firma digitale</div>
-            <div style="font-size:11px;color:var(--text-3)">Firma su schermo o tablet</div>
+          <div class="wiz-card">
+            <div class="wiz-card-ico">${GIIcon('sign', 18)}</div>
+            <div class="wiz-card-t">Firma digitale</div>
+            <div class="wiz-card-d">Firma su schermo o tablet</div>
           </div>
-          <div style="background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:10px;padding:14px">
-            <div style="font-size:20px;margin-bottom:6px">📄</div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:4px">PDF ed Email</div>
-            <div style="font-size:11px;color:var(--text-3)">Export e invio automatico</div>
+          <div class="wiz-card">
+            <div class="wiz-card-ico">${GIIcon('file', 18)}</div>
+            <div class="wiz-card-t">PDF ed Email</div>
+            <div class="wiz-card-d">Export e invio automatico</div>
           </div>
         </div>`;
     } else if (this.step === 1) {
@@ -393,10 +404,10 @@ const Wizard = {
       el.innerHTML = `
         <div class="step-title">Test connessione</div>
         <div class="step-desc">Verifica che le credenziali siano corrette e che Exchange risponda.</div>
-        <div style="background:var(--bg-elev);box-shadow:var(--sh-1);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px">
-          <div style="color:var(--text-2);margin-bottom:2px">Account</div>
-          <div style="font-weight:700">${this.data.email}</div>
-          <div style="color:var(--text-3);font-size:11px;margin-top:4px">${this.data.server || 'Autodiscovery'}</div>
+        <div class="wiz-account">
+          <div class="wiz-account-lbl">Account</div>
+          <div class="wiz-account-mail">${escHtml(this.data.email)}</div>
+          <div class="wiz-account-srv">${escHtml(this.data.server) || 'Autodiscovery'}</div>
         </div>
         <button class="test-btn" id="wiz-test-btn" onclick="Wizard.runTest()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -1836,7 +1847,7 @@ const App = {
     $('modal-email-body').innerHTML = `
       <div class="fg"><label class="fg-lbl">A</label><input class="fg-in" id="email-to" value="${toVal}" placeholder="destinatario@azienda.it"></div>
       <div class="fg"><label class="fg-lbl">CC</label><input class="fg-in" id="email-cc" value="${ccVal}"></div>
-      <div class="fg"><label class="fg-lbl">Oggetto</label><input class="fg-in" id="email-subject" value="Report intervento — ${item.ragione_sociale || ''}"></div>
+      <div class="fg"><label class="fg-lbl">Oggetto</label><input class="fg-in" id="email-subject" value="Report intervento: ${item.ragione_sociale || ''}"></div>
       <div class="fg"><label class="fg-lbl">Messaggio</label><textarea class="fg-ta" id="email-body" rows="4">Gentili,\n\nIn allegato il report dell'intervento del ${fmtDT(item.start_dt)}.\n\nCordiali saluti</textarea></div>
       <div style="display:flex;align-items:center;gap:10px">
         <button class="btn" type="button" id="email-preview-btn" onclick="App.emailPreviewPdf()">${GIIcon('file')} Anteprima PDF</button>
@@ -1987,7 +1998,7 @@ const App = {
     };
     try {
       const created = await invoke('create_intervention', { data });
-      if (crossDay) toast('Incollato a cavallo di due giorni — prosegue il giorno dopo', 'warning');
+      if (crossDay) toast('Incollato a cavallo di due giorni: prosegue il giorno dopo', 'warning');
       else toast('Intervento incollato', 'success');
       await this.loadInterventions(); // refreshes the calendar silently
       if (this.currentView === 'calendar') Calendar.popItem(created?.exchange_item_id);
