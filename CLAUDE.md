@@ -22,7 +22,7 @@ src-tauri/      backend Rust (Tauri 2): EWS, SQLite cache, coda offline, PDF, em
 
 | File | Contenuto |
 |------|-----------|
-| `index.html` | Unica pagina; script caricati con `?v=N` manuale (**bump dopo ogni modifica JS/CSS**) |
+| `index.html` | Unica pagina; `?v=` = hash contenuto, riscritto da `npm run bump` (anche nel pre-commit hook, `core.hooksPath .githooks`) — niente più bump manuale |
 | `shared.js` | Helper puri (`escHtml`, `buildSubject`, `fmtDT`, `durMinToStr`, `pendingBadge`), caricato per primo; testato in `tests/shared.test.js` |
 | `app.js` | Helpers DOM globali (`invoke`, `toast`, `confirmDialog`, `sanitizeNote`, `htmlToText`, `GIIcon`, `createFuzzyDropdown`, `closeOverlay`, `syncSeg`) + `Wizard` onboarding + `App` (navigazione, lista, detail, form, modali) |
 | `calendar.js` | `Calendar` (IIFE): viste settimana/giorno/mese, drag/resize, peek popover |
@@ -33,7 +33,7 @@ src-tauri/      backend Rust (Tauri 2): EWS, SQLite cache, coda offline, PDF, em
 
 ### Convenzioni frontend (vincolanti)
 
-- **Bump `?v=`** in `index.html` per ogni file JS/CSS toccato, altrimenti la webview serve cache stantia.
+- **Versioni asset**: `npm run bump` riscrive i `?v=` con hash del contenuto; il pre-commit hook lo fa da solo. Se la webview mostra roba vecchia in dev senza commit, lanciarlo a mano.
 - Note intervento sono **HTML rich-text**: ogni body non fidato passa da `sanitizeNote()` (DOMPurify).
 - Nei template `onclick` usare `JSON.stringify(val)` per stringhe, mai `'${escHtml(val)}'` (si rompe con apostrofi).
 - **Trappola flash re-render**: il full re-render del calendario/lista rigioca le animazioni di entrata. Preferire toggle di classi, refresh silenzioso, `popItem`/animateOut.
